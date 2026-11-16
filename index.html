@@ -274,6 +274,10 @@ input[type=search],.findbar input{border:1px solid var(--line);background:var(--
 .scan{position:fixed;inset:0;z-index:100;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:#fff;padding:16px}
 .scan video{max-width:100%;max-height:70vh;border-radius:10px}
 @media (max-width:560px){.dcols{grid-template-columns:1fr}.mergerow{flex-direction:column;align-items:stretch}}
+
+.chev{color:var(--ink-2);font-size:14px;flex:none}
+.linkbtn{border:0;background:none;color:var(--accent);text-decoration:underline;padding:0;font:inherit;cursor:pointer}
+.fed.other{border-style:dashed;color:var(--ink-2)}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
@@ -458,7 +462,7 @@ var EX_COMICS=[
 ];
 
 /* ---------- state ---------- */
-var S={comics:{},folders:{},views:{},works:{},editions:{},reviews:{},ignored:[],find:{q:'',open:'',ol:null,olState:'',olQ:'',isbn:{}},rv:{editing:false,rating:0},mergeTo:'',loaded:false,mode:'loading',
+var S={comics:{},folders:{},views:{},works:{},editions:{},reviews:{},ignored:[],find:{q:'',open:'',online:null,eds:{},isbn:{},curStories:{},curEds:{},limit:8},rv:{editing:false,rating:0},mergeTo:'',loaded:false,mode:'loading',
   tab:'own',folder:'all',view:'shelf',sort:'release',q:'',pub:'',author:'',fmt:'',bind:'',read:'',
   modal:null,addingFolder:false,renaming:false,confirm:''};
 var lastW=0, draftCover='', draftCoverUrl='', draftCoverColor='', draftSpine='', draftColor='', draftColorSrc='', lastFocus=null;
@@ -990,11 +994,6 @@ function reopenModal(){
 }
 
 /* ----- online lookups (Open Library) ----- */
-async function searchOL(q){
-  var r=await fetch(OL+'/search.json?q='+encodeURIComponent(q)+'&limit=20&fields=key,title,author_name,cover_i,first_publish_year,isbn,publisher');
-  if(!r.ok)throw new Error('HTTP '+r.status);
-  return (await r.json()).docs||[];
-}
 async function lookupIsbnOL(isbn){
   var k='ISBN:'+isbn, r=await fetch(OL+'/api/books?bibkeys='+k+'&format=json&jscmd=data');
   if(!r.ok)throw new Error('HTTP '+r.status);
@@ -1003,12 +1002,6 @@ async function lookupIsbnOL(isbn){
   return {title:String(d.title||''),subtitle:String(d.subtitle||''),author:(d.authors||[]).map(function(a){return a.name}).join(', '),
     publisher:((d.publishers||[])[0]||{}).name||'',releaseDate:y?y[1]:'',isbn:isbn};
 }
-function olDraft(d){
-  var isb=(d.isbn||[]).filter(function(x){return x.length===13})[0]||(d.isbn||[])[0]||'';
-  return {title:d.title||'',author:(d.author_name||[]).slice(0,3).join(', '),publisher:(d.publisher||[])[0]||'',
-    releaseDate:d.first_publish_year?String(d.first_publish_year):'',isbn:isb?isbn13(isb):'',coverId:d.cover_i||0};
-}
-
 /* ----- add flow, step 1: find the book first ----- */
 function scanSupported(){return ('BarcodeDetector' in window)&&!!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia)}
 function thumbFor(w){
@@ -1019,70 +1012,270 @@ function metaFor(w){
   var eds=editionsOf(w.id), rs=reviewsOf(w.id), own=workCopies(w.id);
   return eds.length+(eds.length===1?' edition':' editions')+(rs.length?' · '+stars(avgRating(w.id))+' ('+rs.length+')':'')+(own.length?' · you have '+own.length:'');
 }
-function workCard(w,hiEd){
-  var open=S.find.open===w.id||!!hiEd, h='<div class="fcard'+(open?' open':'')+'"><button type="button" class="frow" data-fwork="'+esc(w.id)+'">'+thumbFor(w)+
-    '<span class="ft"><b>'+esc(nameOf(w))+'</b><span class="note">'+esc(w.author||'No author')+'</span><span class="note">'+esc(metaFor(w))+'</span></span></button>';
+/* ----- add flow, step 1: look the book up ----------------------------------------------------
+   Search runs on Open Library (works and editions, run by the Internet Archive) and Google Books
+   (ISBN and publisher data) together. Their raw results are messy: one story shows up as many
+   separate records. They are normalized and clustered here, so you see one row per story and
+   choose your edition inside it. */
+var GB='https://www.googleapis.com/books/v1/volumes';
+var storySeq=0, findTimer=null;
+function isIsbnQuery(q){return /^[\d\-\sXx]+$/.test(q)&&validIsbn(cleanIsbn(q))}
+function splitVolume(title){
+  var t=String(title||'').replace(/\s*\([^)]*\)\s*$/,'').trim();
+  var m=/^(.*?)[\s,:\-\u2013\u2014]*\b(?:volume|vol\.?|book|part|v\.?)\s*(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b\.?\s*(?:[:\-\u2013\u2014]\s*.+)?$/i.exec(t);
+  if(m&&m[1].trim())return {title:m[1].trim().replace(/[,:\-\s]+$/,''),issue:String(NUMWORDS[m[2].toLowerCase()]||m[2])};
+  return {title:t,issue:''};
+}
+function guessFormat(s){return /omnibus/i.test(s)?'omnibus':(/compendium/i.test(s)?'compendium':'trade')}
+function bindingOf(s){s=String(s||'').toLowerCase();if(/hard|cloth|library|boards/.test(s))return 'hardcover';if(/paper|trade|soft|mass|pocket/.test(s))return 'paperback';return ''}
+function yearOf(s){var m=/\b(1[89]\d\d|20\d\d)\b/.exec(String(s||''));return m?m[1]:''}
+
+async function searchOLWorks(q){
+  var r=await fetch(OL+'/search.json?q='+encodeURIComponent(q)+'&limit=20&fields=key,title,author_name,first_publish_year,edition_count,cover_i,subject');
+  if(!r.ok)throw new Error('HTTP '+r.status);
+  return ((await r.json()).docs||[]).filter(function(d){return d.title&&!/#\s*\d/.test(d.title)}).map(function(d){
+    var sv=splitVolume(d.title);
+    return {src:'ol',title:sv.title,issue:sv.issue,author:(d.author_name||[]).slice(0,3).join(', '),year:d.first_publish_year||0,coverId:d.cover_i||0,coverUrl:'',olKey:d.key||'',edCount:d.edition_count||0,comic:/comic|graphic novel|manga/i.test((d.subject||[]).join(' '))};
+  });
+}
+function recFromGB(v){
+  var i=v.volumeInfo||{};
+  if(!i.title||(v.saleInfo&&v.saleInfo.isEbook))return null;
+  var full=i.title+(i.subtitle&&!/edition|deluxe|hardcover|paperback|collection|omnibus/i.test(i.subtitle)?': '+i.subtitle:'');
+  if(/#\s*\d/.test(full))return null;
+  var ids=i.industryIdentifiers||[], a=ids.filter(function(x){return x.type==='ISBN_13'})[0], b=ids.filter(function(x){return x.type==='ISBN_10'})[0];
+  var isbn=a?cleanIsbn(a.identifier):(b?isbn13(b.identifier):'');
+  var th=i.imageLinks&&(i.imageLinks.thumbnail||i.imageLinks.smallThumbnail);
+  var cu=th?th.replace(/^http:/,'https:').replace('&edge=curl','').replace('zoom=1','zoom=2'):'';
+  var sv=splitVolume(full), yr=yearOf(i.publishedDate);
+  return {src:'gb',title:sv.title,issue:sv.issue,author:(i.authors||[]).slice(0,3).join(', '),year:+yr||0,coverId:0,coverUrl:cu,
+    comic:/comic|graphic/i.test((i.categories||[]).join(' ')),
+    edition:{src:'gb',isbn:isbn,publisher:i.publisher||'',year:yr,binding:'',format:guessFormat(full),pages:i.pageCount||0,coverId:0,coverUrl:cu}};
+}
+async function searchGB(q){
+  var r=await fetch(GB+'?q='+encodeURIComponent(q)+'&maxResults=30&printType=books&langRestrict=en');
+  if(!r.ok)throw new Error('HTTP '+r.status);
+  return ((await r.json()).items||[]).map(recFromGB).filter(Boolean);
+}
+/* many records, one story: the same normalized title, volume and author fold together */
+function clusterRecords(recs){
+  recs=recs.slice().sort(function(a,b){return (a.src==='ol'?0:1)-(b.src==='ol'?0:1)||(b.edCount||0)-(a.edCount||0)});
+  var cl=[];
+  recs.forEach(function(r){
+    var best=null,bs=0;
+    cl.forEach(function(c){var s=workScore(r,c);if(s>bs){bs=s;best=c}});
+    if(best&&bs>=0.85){best.members.push(r);return}
+    cl.push({id:'o'+(++storySeq),title:r.title,issue:r.issue,author:r.author,members:[r]});
+  });
+  cl.forEach(function(c){
+    var m=c.members;
+    c.olKeys=m.filter(function(x){return x.olKey}).map(function(x){return x.olKey});
+    c.gbEditions=m.filter(function(x){return x.edition}).map(function(x){return x.edition});
+    c.edCount=m.reduce(function(s,x){return s+(x.edCount||(x.edition?1:0))},0);
+    var ys=m.map(function(x){return x.year}).filter(Boolean);c.year=ys.length?Math.min.apply(null,ys):0;
+    c.coverId=(m.filter(function(x){return x.coverId})[0]||{}).coverId||0;
+    c.coverUrl=(m.filter(function(x){return x.coverUrl})[0]||{}).coverUrl||'';
+    c.comic=m.some(function(x){return x.comic});
+    if(!c.author)c.author=(m.filter(function(x){return x.author})[0]||{}).author||'';
+    c.local=null;
+  });
+  return cl;
+}
+/* what is in the catalog already, merged into the online stories; catalog-only matches get their own row */
+function buildStories(q){
+  var on=S.find.online&&S.find.online.q===q?S.find.online.stories:[], rows=[], used={};
+  on.forEach(function(c){
+    var rel=queryScore(q,c);if(rel<=0)return;
+    var best=null,bs=0;
+    list(S.works).forEach(function(w){if(used[w.id])return;var s=workScore(c,w);if(s>bs){bs=s;best=w}});
+    c.local=bs>=0.85?best:null;if(c.local)used[c.local.id]=1;
+    rows.push({st:c,score:rel+(c.local?0.3:0)+(c.comic?0.15:0)+Math.min(0.2,Math.log10(c.edCount+1)*0.1)});
+  });
+  list(S.works).forEach(function(w){
+    if(used[w.id])return;var s=queryScore(q,w);if(s<=0)return;
+    rows.push({st:{id:'w'+w.id,title:w.title,issue:w.issue,author:w.author,year:0,olKeys:[],gbEditions:[],edCount:0,local:w,coverId:0,coverUrl:''},score:s+0.3});
+  });
+  return rows.sort(function(a,b){return b.score-a.score||a.st.title.localeCompare(b.st.title)}).map(function(x){return x.st});
+}
+function olEdition(e){
+  var lang=(e.languages||[]).map(function(l){return l.key});
+  if(lang.length&&lang.indexOf('/languages/eng')<0)return null;
+  var pf=e.physical_format||'';
+  if(/ebook|audio|\bcd\b|dvd|kindle|electronic|microform|video|vhs|cassette/i.test(pf))return null;
+  var i13=(e.isbn_13||[])[0], i10=(e.isbn_10||[])[0], isbn=i13?cleanIsbn(i13):(i10?isbn13(i10):'');
+  var cid=(e.covers||[]).filter(function(x){return x>0})[0]||0;
+  return {src:'ol',isbn:isbn,publisher:(e.publishers||[])[0]||'',year:yearOf(e.publish_date),binding:bindingOf(pf),
+    format:guessFormat((e.title||'')+' '+(e.subtitle||'')+' '+pf),pages:e.number_of_pages||0,coverId:cid,coverUrl:''};
+}
+async function loadStoryEditions(st){
+  S.find.eds[st.id]={state:'loading',list:[]};renderFind();
+  var all=[],fails=0;
+  await Promise.all(st.olKeys.slice(0,4).map(async function(k){
+    try{
+      var r=await fetch(OL+k+'/editions.json?limit=100');
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      ((await r.json()).entries||[]).forEach(function(e){var x=olEdition(e);if(x)all.push(x)});
+    }catch(e){fails++}
+  }));
+  S.find.eds[st.id]={state:fails&&!all.length?'error':'done',list:all};
+  renderFind();
+}
+/* the editions of one story, from your catalog, Open Library and Google Books, with repeats folded by ISBN */
+function mergedEditions(st){
+  var out=[], byIsbn={};
+  function add(e){
+    if(e.isbn&&byIsbn[e.isbn]){
+      var x=byIsbn[e.isbn];['publisher','year','binding','coverId','coverUrl','pages'].forEach(function(k){if(!x[k]&&e[k])x[k]=e[k]});
+      if(x.format==='trade'&&e.format!=='trade')x.format=e.format;
+      return;
+    }
+    if(e.isbn)byIsbn[e.isbn]=e;
+    out.push(e);
+  }
+  if(st.local)editionsOf(st.local.id).forEach(function(le){
+    add({src:'local',localEditionId:le.id,isbn:le.isbn,publisher:le.publisher,year:le.releaseDate?String(le.releaseDate).slice(0,4):'',binding:le.binding,format:le.format,pages:0,coverId:0,coverUrl:le.cover||le.coverUrl||''});
+  });
+  var on=S.find.eds[st.id];
+  (on&&on.list||[]).concat(st.gbEditions||[]).forEach(function(e){add(Object.assign({},e))});
+  /* entries with no ISBN that match an ISBN'd one (same publisher, year, binding) are the same edition: keep one */
+  function samePY(a,b){return String(a.publisher||'').toLowerCase()===String(b.publisher||'').toLowerCase()&&String(a.year||'')===String(b.year||'')&&(!a.binding||!b.binding||a.binding===b.binding)}
+  var seen={};
+  out=out.filter(function(e){
+    if(e.isbn)return true;
+    if(!e.publisher&&!e.year)return false;
+    var twin=out.filter(function(o){return o!==e&&o.isbn&&samePY(o,e)})[0];
+    if(twin){if(e.localEditionId&&!twin.localEditionId)twin.localEditionId=e.localEditionId;return false}
+    var k=String(e.publisher||'').toLowerCase()+'|'+e.year+'|'+e.binding;
+    if(seen[k]){if(e.localEditionId&&!seen[k].localEditionId)seen[k].localEditionId=e.localEditionId;return false}
+    seen[k]=e;return true;
+  });
+  return out.sort(function(a,b){return (+a.year||9999)-(+b.year||9999)});
+}
+function edLabelOnline(e){
+  return [BINDINGS[e.binding]||'Binding not listed',FORMATS[e.format]&&e.format!=='trade'?FORMATS[e.format].label:'',e.publisher,e.year,e.isbn?'ISBN '+e.isbn:''].filter(Boolean).join(' · ');
+}
+function storyThumb(st){
+  if(st.local&&editionsOf(st.local.id).some(function(e){return e.cover||e.coverUrl}))return thumbFor(st.local);
+  var src=st.coverId?olCoverUrl(st.coverId,'M'):st.coverUrl;
+  return '<div class="thumb">'+coverHTML({title:st.title,issue:st.issue,publisher:'',coverUrl:src||''})+'</div>';
+}
+function storyMeta(st){
+  var own=st.local?workCopies(st.local.id).length:0, eds=st.local?editionsOf(st.local.id).length:0;
+  return [st.local?'In your catalog':'',own?'you have '+own:'',st.edCount>(eds||0)&&st.olKeys.length+st.gbEditions.length?st.edCount+' editions listed online':''].filter(Boolean).join(' · ')||'Not in your catalog yet';
+}
+function storyCard(st){
+  var open=S.find.open===st.id;
+  S.find.curStories[st.id]=st;
+  var h='<div class="fcard'+(open?' open':'')+'"><button type="button" class="frow" data-story="'+esc(st.id)+'" aria-expanded="'+open+'">'+storyThumb(st)+
+    '<span class="ft"><b>'+esc(nameOf(st))+'</b><span class="note">'+esc([st.author,st.year||''].filter(Boolean).join(' · '))+'</span><span class="note">'+esc(storyMeta(st))+'</span></span><span class="chev" aria-hidden="true">'+(open?'▾':'▸')+'</span></button>';
   if(open){
-    h+='<div class="feds"><div class="note">Which edition do you have?</div>'+editionsOf(w.id).map(function(e){
-      var n=copiesOf(e.id).length;
-      return '<button type="button" class="fed'+(hiEd===e.id?' hi':'')+'" data-pick-ed="'+esc(e.id)+'">'+esc(edLabel(e))+(n?' <span class="note">(you have '+n+')</span>':'')+'</button>';
-    }).join('')+'<button type="button" class="fed" data-pick-work="'+esc(w.id)+'">A different edition of this book…</button></div>';
+    var eds=mergedEditions(st), on=S.find.eds[st.id];
+    S.find.curEds[st.id]=eds;
+    h+='<div class="feds"><div class="note">Which edition do you have?</div>'+eds.map(function(e,i){
+      var n=e.localEditionId?copiesOf(e.localEditionId).length:0;
+      return '<button type="button" class="fed" data-ed="'+esc(st.id)+'|'+i+'">'+esc(edLabelOnline(e))+(n?' <span class="note">(you have '+n+')</span>':'')+'</button>';
+    }).join('')+
+    (on&&on.state==='loading'?'<div class="note">Loading more editions…</div>':'')+
+    (on&&on.state==='error'?'<div class="note">Could not load the full edition list.</div>':'')+
+    '<button type="button" class="fed other" data-ed-other="'+esc(st.id)+'">Mine is not listed…</button></div>';
   }
   return h+'</div>';
 }
 function renderFind(){
   var el=$('#find-results');if(!el)return;
   var q=S.find.q.trim(), html='', ib=cleanIsbn(q);
+  S.find.curStories={};S.find.curEds={};
   if(!q){
     var n=list(S.works).length;
-    el.innerHTML='<p class="note">'+(n?'Your catalog has '+n+(n===1?' book':' books')+'. Start typing to find one.':'Your catalog is empty. Type a title and search Open Library, or enter a book by hand.')+'</p>';return;
+    el.innerHTML='<p class="note">'+(n?'Your catalog has '+n+(n===1?' book':' books')+'. ':'')+'Type a title, an author or an ISBN. Books are looked up online and grouped by story, so every edition of a book is one result.</p>';return;
   }
-  if(/^[\d\-\sXx]+$/.test(q)&&validIsbn(ib)){
+  if(isIsbnQuery(q)){
     var k=isbn13(ib), ed=editionByIsbn(k);
-    if(ed&&S.works[ed.workId]){html='<h3 class="rh">Exact ISBN match</h3>'+workCard(S.works[ed.workId],ed.id)}
-    else{
+    if(ed&&S.works[ed.workId]){
+      var w=S.works[ed.workId];
+      html='<h3 class="rh">Already in your catalog</h3><div class="fcard open"><button type="button" class="frow" data-story="w'+esc(w.id)+'">'+thumbFor(w)+'<span class="ft"><b>'+esc(nameOf(w))+'</b><span class="note">'+esc(w.author||'')+'</span></span></button><div class="feds"><button type="button" class="fed hi" data-ed="w'+esc(w.id)+'|0">'+esc(edLabel(ed))+'</button></div></div>';
+      S.find.curStories['w'+w.id]={id:'w'+w.id,title:w.title,issue:w.issue,author:w.author,local:w,olKeys:[],gbEditions:[]};
+      S.find.curEds['w'+w.id]=[{src:'local',localEditionId:ed.id,isbn:ed.isbn}];
+    } else {
       var st=S.find.isbn[k];
       if(!st){S.find.isbn[k]={state:'loading'};lookupIsbnFlow(k)}
       st=S.find.isbn[k];
-      if(st.state==='loading')html='<p class="note">Not in the catalog yet. Looking up ISBN '+esc(k)+' on Open Library…</p>';
-      else if(st.state==='found')html='<h3 class="rh">Found online</h3><div class="fcard"><button type="button" class="frow" data-act="pick-isbn" data-isbn="'+esc(k)+'"><span class="ft"><b>'+esc(st.data.title)+'</b><span class="note">'+esc(st.data.author||'')+'</span><span class="note">'+esc([st.data.publisher,st.data.releaseDate].filter(Boolean).join(' · '))+'</span></span><span class="btn small primary">Add this</span></button></div>';
-      else html='<p class="note">'+(st.state==='none'?'Open Library does not know ISBN '+esc(k)+'.':'Could not reach Open Library.')+' You can enter the book by hand and keep the ISBN.</p>';
+      if(st.state==='loading')html='<p class="note">Looking up ISBN '+esc(k)+'…</p>';
+      else if(st.state==='found')html='<h3 class="rh">Found online</h3><div class="fcard"><button type="button" class="frow" data-act="pick-isbn" data-isbn="'+esc(k)+'"><span class="ft"><b>'+esc(nameOf(st.data))+'</b><span class="note">'+esc(st.data.author||'')+'</span><span class="note">'+esc([st.data.publisher,st.data.releaseDate].filter(Boolean).join(' · '))+'</span></span><span class="btn small primary">Add this</span></button></div>';
+      else html='<p class="note">'+(st.state==='none'?'No database knows ISBN '+esc(k)+'.':'Could not reach the book databases.')+' You can enter the book by hand and keep the ISBN.</p>';
     }
     el.innerHTML=html;return;
   }
-  var hits=list(S.works).map(function(w){return {w:w,s:queryScore(q,w)}}).filter(function(x){return x.s>0}).sort(function(a,b){return b.s-a.s||a.w.title.localeCompare(b.w.title)});
-  html=hits.length?'<h3 class="rh">In the catalog</h3>'+hits.slice(0,12).map(function(x){return workCard(x.w)}).join(''):'<p class="note">Nothing in the catalog matches “'+esc(q)+'” yet.</p>';
-  if(S.find.olState==='loading')html+='<p class="note">Searching Open Library…</p>';
-  else if(S.find.olState==='error')html+='<p class="note">Could not reach Open Library. You can still enter the book by hand.</p>';
-  else if(S.find.olState==='done'){
-    var docs=S.find.ol||[], shown=[], hidden=0;
-    docs.forEach(function(d,i){var dr=olDraft(d);if(nearWorks(dr,NEAR).length)hidden++;else shown.push([d,i])});
-    html+='<h3 class="rh">From Open Library</h3>'+(shown.length?shown.slice(0,10).map(function(p){
-      var d=p[0],dr=olDraft(d);
-      return '<div class="fcard"><button type="button" class="frow" data-pick-ol="'+p[1]+'"><span class="thumb">'+(d.cover_i?'<img src="'+olCoverUrl(d.cover_i,'M')+'" alt="" loading="lazy" referrerpolicy="no-referrer">':'')+'</span><span class="ft"><b>'+esc(d.title)+'</b><span class="note">'+esc(dr.author)+'</span><span class="note">'+esc(dr.releaseDate)+'</span></span></button></div>';
-    }).join(''):'<p class="note">No new results.</p>')+(hidden?'<p class="note">'+hidden+' result'+(hidden===1?' is':'s are')+' already in your catalog and hidden here.</p>':'');
-  } else html+='<div class="actions" style="margin-top:12px"><button type="button" class="btn" data-act="find-online">Search Open Library for “'+esc(q)+'”</button></div>';
+  var stories=buildStories(q), lim=S.find.limit||8, on=S.find.online;
+  html=stories.slice(0,lim).map(storyCard).join('');
+  if(stories.length>lim)html+='<div class="actions"><button type="button" class="btn small" data-act="more-results">Show '+(stories.length-lim)+' more</button></div>';
+  if(on&&on.q===q){
+    if(on.state==='wait'||on.state==='loading')html+='<p class="note">Searching Open Library and Google Books…</p>';
+    else if(on.state==='error')html+='<p class="note">Could not reach the book databases. <button type="button" class="linkbtn" data-act="retry-online">Try again</button> or enter the book by hand.</p>';
+    else if(on.failed)html+='<p class="note">One of the two databases did not answer, so some editions may be missing. <button type="button" class="linkbtn" data-act="retry-online">Try again</button></p>';
+  }
+  if(!stories.length&&(!on||on.q!==q||on.state==='done'))html='<p class="note">No match for “'+esc(q)+'”. Check the spelling, try the author or an ISBN, or enter it by hand.</p>'+html;
   el.innerHTML=html;
 }
-async function lookupIsbnFlow(k){
-  try{var d=await lookupIsbnOL(k);S.find.isbn[k]=d?{state:'found',data:d}:{state:'none'}}
-  catch(e){S.find.isbn[k]={state:'error'}}
+function scheduleOnline(){
+  clearTimeout(findTimer);
+  var q=S.find.q.trim();
+  if(q.length<3||isIsbnQuery(q)){S.find.online=null;return}
+  S.find.online={q:q,state:'wait',stories:[],failed:0};
+  findTimer=setTimeout(function(){runOnline(q)},450);
+}
+async function runOnline(q){
+  var o=S.find.online;if(!o||o.q!==q)return;
+  o.state='loading';renderFind();
+  var res=await Promise.allSettled([searchOLWorks(q),searchGB(q)]), recs=[], failed=0;
+  if(S.find.online!==o)return;
+  res.forEach(function(r){if(r.status==='fulfilled')recs=recs.concat(r.value);else failed++});
+  o.stories=clusterRecords(recs);o.failed=failed;o.state=failed===2?'error':'done';
   renderFind();
 }
-async function findOnline(){
-  var q=S.find.q.trim();if(!q)return;
-  S.find.olState='loading';S.find.olQ=q;renderFind();
-  try{var docs=await searchOL(q);if(S.find.olQ!==q)return;S.find.ol=docs;S.find.olState='done'}
-  catch(e){if(S.find.olQ!==q)return;S.find.olState='error'}
+async function lookupIsbnGB(k){
+  var r=await fetch(GB+'?q=isbn:'+k+'&maxResults=1');
+  if(!r.ok)throw new Error('HTTP '+r.status);
+  var it=((await r.json()).items||[])[0];if(!it)return null;
+  var i=it.volumeInfo||{}, sv=splitVolume(i.title);
+  return {title:sv.title,issue:sv.issue,subtitle:'',author:(i.authors||[]).join(', '),publisher:i.publisher||'',releaseDate:yearOf(i.publishedDate),isbn:k};
+}
+async function lookupIsbnFlow(k){
+  var d=null,failed=0;
+  try{d=await lookupIsbnOL(k)}catch(e){failed++}
+  if(d){var sv=splitVolume(d.title);d.title=sv.title;d.issue=sv.issue||d.issue||''}
+  if(!d){try{d=await lookupIsbnGB(k)}catch(e){failed++}}
+  S.find.isbn[k]=d?{state:'found',data:d}:{state:failed>=2?'error':'none'};
   renderFind();
+}
+/* choose an edition: one already in the catalog is linked, anything else opens the form pre-filled */
+function pickEdition(sid,i){
+  var st=S.find.curStories[sid], ed=(S.find.curEds[sid]||[])[i];if(!st||!ed)return;
+  var known=ed.localEditionId?S.editions[ed.localEditionId]:editionByIsbn(ed.isbn);
+  if(known){
+    /* what the database knows fills blanks in the catalog entry, never overwrites it */
+    fillEdition(known,{isbn:ed.isbn,publisher:ed.publisher,releaseDate:ed.year});persist();
+    editModal(null,{bind:{editionId:known.id}});return}
+  var opts={prefill:{title:st.title,issue:st.issue,author:st.author,publisher:ed.publisher,releaseDate:ed.year,isbn:ed.isbn,format:ed.format||'trade',binding:ed.binding||'paperback'},
+    olCoverId:ed.coverId,coverRemote:ed.coverUrl,autoIsbn:!ed.coverId&&!ed.coverUrl&&!!ed.isbn};
+  if(!ed.binding)opts.note='The databases did not say whether this is hardcover or paperback. Please check.';
+  if(st.local)opts.bind={workId:st.local.id};
+  editModal(null,opts);
+}
+function pickOtherEdition(sid){
+  var st=S.find.curStories[sid];if(!st)return;
+  var opts={prefill:{title:st.title,issue:st.issue,author:st.author}};
+  if(st.local)opts.bind={workId:st.local.id};
+  editModal(null,opts);
 }
 function findModal(){
-  S.modal={mode:'find'};S.find={q:'',open:'',ol:null,olState:'',olQ:'',isbn:{}};
+  S.modal={mode:'find'};S.find={q:'',open:'',online:null,eds:{},isbn:{},curStories:{},curEds:{},limit:8};
+  clearTimeout(findTimer);
   $('#sheet').innerHTML='<button type="button" class="x" data-act="close" aria-label="Close">×</button><h2 id="mtitle">Add a book</h2>'+
-    '<p class="note">Search first, so your copy is linked to the book that is already in the catalog instead of creating a second version. Type a title, an author or an ISBN.</p>'+
-    '<div class="findbar"><label class="sr" for="find-q">Title, author or ISBN</label><input id="find-q" type="search" placeholder="Title, author or ISBN" autocomplete="off">'+(scanSupported()?'<button type="button" class="btn" data-act="scan">Scan barcode</button>':'')+'</div>'+
+    '<p class="note">Type a title, an author or an ISBN. Books are looked up online and every edition is grouped under one result, so you just pick the one you own.</p>'+
+    '<div class="findbar"><label class="sr" for="find-q">Title, author or ISBN</label><input id="find-q" type="search" placeholder="Try “batman year one”" autocomplete="off">'+(scanSupported()?'<button type="button" class="btn" data-act="scan">Scan barcode</button>':'')+'</div>'+
     '<div id="find-results"></div>'+
-    '<div class="actions"><button type="button" class="btn" data-act="manual">Not listed? Enter it by hand</button><span class="push"></span><button type="button" class="btn" data-act="cancel">Cancel</button></div>';
+    '<div class="actions"><button type="button" class="btn small" data-act="manual">Can’t find it? Enter it by hand</button><span class="push"></span><button type="button" class="btn" data-act="cancel">Cancel</button></div>';
   openModal();renderFind();
 }
 var scanState=null;
@@ -1416,7 +1609,10 @@ function editModal(id,opts){
     '</form>';
   syncSwatches();refreshCoverPrev();
   openModal();
-  if(opts.olCoverId)pickCandidate(opts.olCoverId);else if(opts.autoIsbn)findCoverOnline();
+  if(opts.olCoverId)pickCandidate(opts.olCoverId);
+  else if(opts.coverRemote)coverFromUrl(opts.coverRemote).then(function(r){if($('#cands'))setDraftCover(r)});
+  else if(opts.autoIsbn)findCoverOnline();
+  if(opts.note)toast(opts.note);
 }
 function readForm(){
   var g=function(id){return fv(id).trim()}, err=$('#f-err'), bd=boundData(), eb=(bd&&bd.e)||{};
@@ -1629,16 +1825,19 @@ document.addEventListener('click',function(e){if(suppressClick){e.stopPropagatio
 /* ---------- events ---------- */
 document.addEventListener('click',function(e){
   var t=e.target;
-  var el=t.closest('[data-tab],[data-view],[data-folder],[data-open],[data-got],[data-act],[data-color],[data-cand],[data-work],[data-fwork],[data-pick-ed],[data-pick-work],[data-pick-ol],[data-use-work],[data-add-ed],[data-star],[data-merge],[data-ignore]');
+  var el=t.closest('[data-tab],[data-view],[data-folder],[data-open],[data-got],[data-act],[data-color],[data-cand],[data-work],[data-story],[data-ed],[data-ed-other],[data-use-work],[data-add-ed],[data-star],[data-merge],[data-ignore]');
   if(t.id==='modal'){closeModal();return}
   if(!el)return;
   var d=el.dataset;
   if(d.color!==undefined){if(d.color==='@cover'){draftColor=draftCoverColor;draftColorSrc='cover'}else{draftColor=d.color;draftColorSrc=d.color?'user':''}syncSwatches();refreshCoverPrev();return}
   if(d.cand){pickCandidate(d.cand);return}
-  if(d.fwork!==undefined){S.find.open=S.find.open===d.fwork?'':d.fwork;renderFind();return}
-  if(d.pickEd){editModal(null,{bind:{editionId:d.pickEd}});return}
-  if(d.pickWork){editModal(null,{bind:{workId:d.pickWork}});return}
-  if(d.pickOl!==undefined){var dr=olDraft(S.find.ol[+d.pickOl]);editModal(null,{prefill:dr,olCoverId:dr.coverId});return}
+  if(d.story){
+    S.find.open=S.find.open===d.story?'':d.story;
+    var st0=S.find.curStories[d.story];
+    if(S.find.open&&st0&&st0.olKeys.length&&!S.find.eds[d.story])loadStoryEditions(st0);else renderFind();
+    return}
+  if(d.ed){var pe=d.ed.split('|');pickEdition(pe[0],+pe[1]);return}
+  if(d.edOther){pickOtherEdition(d.edOther);return}
   if(d.useWork){S.modal.bind={workId:d.useWork};saveForm(S.modal.another);return}
   if(d.work){S.rv={editing:false,rating:0};S.confirm='';workModal(d.work);return}
   if(d.addEd){editModal(null,{bind:{editionId:d.addEd}});return}
@@ -1660,7 +1859,8 @@ document.addEventListener('click',function(e){
   if(d.open){S.rv={editing:false,rating:0};viewModal(d.open);return}
   switch(d.act){
     case 'add':findModal();break;
-    case 'find-online':findOnline();break;
+    case 'retry-online':scheduleOnline();if(S.find.online)runOnline(S.find.online.q);break;
+    case 'more-results':S.find.limit=(S.find.limit||8)+10;renderFind();break;
     case 'manual':{var fq=S.find.q.trim(),fib=cleanIsbn(fq);editModal(null,{prefill:(/^[\d\-\sXx]+$/.test(fq)&&validIsbn(fib))?{isbn:isbn13(fib)}:{title:fq}});break}
     case 'change-book':findModal();break;
     case 'force-new':S.modal.forceNew=true;saveForm(S.modal.another);break;
@@ -1752,7 +1952,7 @@ document.addEventListener('change',function(e){
 document.addEventListener('input',function(e){
   var t=e.target;
   if(t.id==='q'){S.q=t.value;renderContent()}
-  if(t.id==='find-q'){S.find.q=t.value;S.find.ol=null;S.find.olState='';renderFind()}
+  if(t.id==='find-q'){S.find.q=t.value;S.find.open='';S.find.limit=8;scheduleOnline();renderFind()}
   if(t.id==='f-title'||t.id==='f-issue'||t.id==='f-pub'||t.id==='f-author'){refreshCoverPrev()}
   if(t.id==='f-color-custom'){draftColor=t.value;syncSwatches();refreshCoverPrev()}
 });
