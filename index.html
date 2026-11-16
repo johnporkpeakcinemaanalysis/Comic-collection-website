@@ -1,0 +1,1816 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<title>Longbox</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;700&family=DM+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: header with stats, folder rail on the left, toolbar + shelf / covers / list on the right.
+   Palette is cool ink-and-paper. Spine and cover colors come from each series name, so a series always looks the same. */
+:root{
+  --bg:#EEF0F6; --surface:#FFFFFF; --surface-2:#E3E6F0; --shelf-back:#E0E3EE;
+  --ink:#12141C; --ink-2:#4B5167; --line:#D0D4E2; --plank:#AAB1C7;
+  --accent:#3347E8; --accent-ink:#FFFFFF; --accent-soft:#DCE0FF;
+  --good:#1D7F52; --warn:#9A6414; --danger:#B3261E;
+  --display:'Bebas Neue','Oswald',Impact,'Arial Narrow',sans-serif;
+  --body:'DM Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:'DM Mono',ui-monospace,'SF Mono',Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0E1017; --surface:#171A25; --surface-2:#212536; --shelf-back:#121521;
+    --ink:#ECEEF6; --ink-2:#9AA1B8; --line:#2B3047; --plank:#363C58;
+    --accent:#8F9CFF; --accent-ink:#0E1017; --accent-soft:#252B57;
+    --good:#58C48F; --warn:#E0B060; --danger:#FF8A80; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0E1017; --surface:#171A25; --surface-2:#212536; --shelf-back:#121521;
+  --ink:#ECEEF6; --ink-2:#9AA1B8; --line:#2B3047; --plank:#363C58;
+  --accent:#8F9CFF; --accent-ink:#0E1017; --accent-soft:#252B57;
+  --good:#58C48F; --warn:#E0B060; --danger:#FF8A80; color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html{-webkit-text-size-adjust:100%}
+img{max-width:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.45}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+body.is-dragging{user-select:none;-webkit-user-select:none;cursor:grabbing}
+.app{max-width:1240px;margin:0 auto;padding-block:20px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+
+/* header */
+.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px 24px;padding-bottom:16px;border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:12px;min-width:0}
+.brand svg{flex:none}
+.brand h1{margin:0;font:400 44px/0.9 var(--display);letter-spacing:.03em}
+.brand p{margin:2px 0 0;color:var(--ink-2);font-size:13px}
+.stats{display:flex;flex-wrap:wrap;gap:6px 22px;margin:0;padding:0;list-style:none}
+.stats li{display:flex;flex-direction:column;min-width:64px}
+.stats b{font:500 22px/1.1 var(--mono);font-variant-numeric:tabular-nums}
+.stats span{font-size:12px;color:var(--ink-2);letter-spacing:.06em;text-transform:uppercase}
+
+/* layout */
+.layout{display:grid;grid-template-columns:220px minmax(0,1fr);gap:28px;margin-top:20px;align-items:start}
+.rail{position:sticky;top:12px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.rail h2{margin:0 0 4px;font:400 18px/1 var(--display);letter-spacing:.08em;color:var(--ink-2)}
+.flist{display:flex;flex-direction:column;gap:2px}
+.fbtn{display:flex;justify-content:space-between;align-items:center;gap:8px;width:100%;text-align:left;background:none;border:0;border-radius:6px;padding:8px 10px;color:var(--ink)}
+.fbtn:hover{background:var(--surface-2)}
+.fbtn[aria-current="true"]{background:var(--accent-soft);font-weight:700}
+.fbtn .n{font:400 12px var(--mono);color:var(--ink-2);font-variant-numeric:tabular-nums}
+.fbtn .nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.addf{margin-top:6px;text-align:left;background:none;border:1px dashed var(--line);border-radius:6px;padding:8px 10px;color:var(--ink-2)}
+.addf:hover{border-color:var(--accent);color:var(--accent)}
+.inline-form{display:flex;gap:6px}
+.inline-form input{flex:1;min-width:0}
+
+main{min-width:0;display:flex;flex-direction:column;gap:14px}
+#content{display:flex;flex-direction:column;gap:14px;min-width:0}
+.bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+.seg{display:inline-flex;background:var(--surface-2);border-radius:8px;padding:3px;gap:2px}
+.seg button{border:0;background:none;border-radius:6px;padding:6px 14px;color:var(--ink-2)}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);font-weight:700;box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:8px 14px;font-weight:500}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:700}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.small{padding:5px 10px;font-size:13px}
+.btn.danger{color:var(--danger)}
+.btn.danger.armed{background:var(--danger);border-color:var(--danger);color:var(--surface)}
+.tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.tools input[type=search]{flex:1 1 220px;min-width:0}
+input,select,textarea{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;min-width:0}
+textarea{width:100%;resize:vertical}
+select{padding-right:6px;max-width:100%}
+.tools .seg{margin-left:auto}
+
+.head{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px}
+.head h2{margin:0;font:400 30px/1 var(--display);letter-spacing:.04em}
+.head .meta{color:var(--ink-2);font-size:13px}
+.head .acts{display:flex;gap:6px;margin-left:auto}
+.banner{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between;background:var(--accent-soft);border-radius:8px;padding:10px 14px;font-size:14px}
+.note{color:var(--ink-2);font-size:13px}
+p.note{margin:0}
+
+/* shelf view */
+.shelf{position:relative;display:flex;flex-direction:column;background:var(--shelf-back);border:1px solid var(--line);border-radius:8px;padding:22px 18px 8px}
+.row{display:flex;align-items:flex-end;gap:2px;min-height:40px}
+.plank{height:12px;background:var(--plank);margin:0 -18px 22px;border-radius:2px;box-shadow:0 3px 0 var(--line)}
+.spine{--l:36%;position:relative;flex:none;width:var(--w);height:var(--ht);display:flex;justify-content:center;align-items:flex-start;padding:8px 0;border:0;border-radius:2px 2px 0 0;
+  background-color:var(--c);color:var(--fg,#fff);writing-mode:vertical-rl;font:400 14px/1 var(--display);letter-spacing:.05em;cursor:grab;
+  user-select:none;-webkit-user-select:none;
+  box-shadow:inset -2px 0 0 rgba(0,0,0,.2),inset 2px 0 0 rgba(255,255,255,.14);transition:transform .15s ease}
+.spine span{display:block;max-block-size:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;pointer-events:none}
+.spine.hc{padding:18px 0;
+  background-image:linear-gradient(rgba(255,255,255,.4),rgba(255,255,255,.4)),linear-gradient(rgba(255,255,255,.4),rgba(255,255,255,.4));
+  background-size:100% 3px,100% 3px;background-position:0 7px,0 calc(100% - 7px);background-repeat:no-repeat}
+.spine:hover,.spine:focus-visible{transform:translateY(-8px)}
+.spine.dragging{z-index:20;transition:none;cursor:grabbing;box-shadow:0 14px 26px -4px rgba(0,0,0,.55),inset -2px 0 0 rgba(0,0,0,.2)}
+.drop-ind{position:absolute;width:3px;border-radius:2px;background:var(--accent);z-index:10;pointer-events:none}
+.legend{margin:6px 0 4px;font-size:12px;color:var(--ink-2)}
+
+/* covers */
+.cover{container-type:inline-size;position:relative;aspect-ratio:2/3;overflow:hidden;border-radius:3px;color:var(--fg,#fff);
+  background:linear-gradient(160deg,var(--c1),var(--c2));max-width:100%}
+.cover .cv-in{position:relative;z-index:1;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:9cqw}
+.cover::after{content:"";position:absolute;inset:0;pointer-events:none;background-image:radial-gradient(circle at 1px 1px,rgba(255,255,255,.22) 1px,transparent 1.6px);background-size:7px 7px;
+  -webkit-mask-image:linear-gradient(180deg,#000,transparent 70%);mask-image:linear-gradient(180deg,#000,transparent 70%)}
+.cover .cv-t{position:relative;z-index:1;font:400 16cqw/.94 var(--display);letter-spacing:.02em;text-wrap:balance;overflow:hidden;overflow-wrap:anywhere;max-height:60%}
+.cover .cv-i{position:relative;z-index:1;font:400 22cqw/.9 var(--display);align-self:flex-end}
+.cover .cv-p{position:relative;z-index:1;font:500 7cqw var(--mono);opacity:.85;letter-spacing:.06em;text-transform:uppercase}
+.cover img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:2}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(138px,1fr));gap:20px 16px}
+.card{display:flex;flex-direction:column;gap:6px;min-width:0;text-align:left;background:none;border:0;padding:0}
+.card .cover{box-shadow:0 2px 0 rgba(0,0,0,.18),0 8px 16px -8px rgba(0,0,0,.45);transition:transform .15s;margin-bottom:2px}
+.card:hover .cover,.card:focus-visible .cover{transform:translateY(-4px)}
+.card .t{font-weight:700;font-size:14px;line-height:1.25;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.card .s{font-size:12px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card .s.mono{font-family:var(--mono)}
+.cardwrap{display:flex;flex-direction:column;gap:8px;min-width:0}
+
+/* list */
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{padding:10px 12px;text-align:left;white-space:nowrap;border-bottom:1px solid var(--line)}
+th{font:400 14px var(--display);letter-spacing:.08em;color:var(--ink-2);background:var(--surface-2)}
+tbody tr{cursor:pointer}
+tbody tr:hover{background:var(--accent-soft)}
+tbody tr:last-child td{border-bottom:0}
+td.ttl{white-space:normal;min-width:180px;font-weight:700}
+td.ttl small{display:block;font-weight:400;color:var(--ink-2)}
+td.au{white-space:normal;min-width:140px}
+td.mono{font-family:var(--mono);font-size:13px}
+.pill{display:inline-block;padding:1px 8px;border-radius:99px;font-size:12px;background:var(--surface-2);color:var(--ink-2)}
+.pill.good{background:color-mix(in srgb,var(--good) 18%,transparent);color:var(--good)}
+
+/* empty / loading */
+.empty{display:flex;flex-direction:column;align-items:flex-start;gap:12px;padding:36px 28px;border:1px dashed var(--line);border-radius:10px;background:var(--surface)}
+.empty h3{margin:0;font:400 30px/1 var(--display);letter-spacing:.04em}
+.empty p{margin:0;max-width:52ch;color:var(--ink-2)}
+.empty .acts{display:flex;flex-wrap:wrap;gap:8px}
+
+/* modal */
+.scrim{position:fixed;inset:0;z-index:50;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;background:rgba(8,10,18,.6);
+  padding:max(16px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) max(16px,env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.sheet{width:min(720px,100%);margin-block:auto;background:var(--surface);border-radius:12px;padding:22px;box-shadow:0 24px 60px -12px rgba(0,0,0,.5);position:relative}
+.sheet h2{margin:0;font:400 34px/1 var(--display);letter-spacing:.04em;padding-right:36px}
+.x{position:absolute;top:12px;right:12px;width:34px;height:34px;border-radius:8px;border:0;background:var(--surface-2);font-size:18px;line-height:1}
+.detail{display:grid;grid-template-columns:200px minmax(0,1fr);gap:22px;margin-top:14px}
+.detail .cover{width:100%}
+dl{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;margin:12px 0}
+dt{color:var(--ink-2);font-size:13px}
+dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:99px;padding:4px 12px;font-size:13px;background:var(--surface)}
+label.chip{cursor:pointer}
+label.chip:has(input:checked){background:var(--accent-soft);border-color:var(--accent)}
+.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.actions .push{margin-left:auto}
+.form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 14px;margin-top:16px}
+.form .full{grid-column:1/-1}
+.form label.f{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--ink-2)}
+.form label.f input,.form label.f select{color:var(--ink);font-size:15px}
+.err{color:var(--danger);font-size:13px;min-height:18px;margin:0}
+.coverrow{display:flex;align-items:center;gap:14px}
+.coverrow .cover{width:64px;flex:none}
+.swatches{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.sw{width:30px;height:30px;border-radius:50%;border:2px solid transparent;padding:0;box-shadow:inset 0 0 0 1px rgba(0,0,0,.28)}
+.sw[aria-pressed="true"],.sw.on{border-color:var(--ink);box-shadow:inset 0 0 0 2px var(--surface)}
+.sw.auto{width:auto;border-radius:99px;padding:0 12px;background:var(--surface-2);font-size:13px;color:var(--ink);box-shadow:none;border-color:var(--line)}
+.sw.auto[aria-pressed="true"]{border-color:var(--ink);box-shadow:none}
+.sw.custom{position:relative;overflow:hidden;background:conic-gradient(#e33,#ec3,#3c5,#3cc,#35e,#c3c,#e33)}
+.sw.custom input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;padding:0;border:0}
+.toast{position:fixed;left:50%;bottom:max(20px,env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:60;background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;font-size:14px;max-width:calc(100% - 32px)}
+
+@media (max-width:820px){
+  .layout{grid-template-columns:minmax(0,1fr);gap:14px}
+  .rail{position:static}
+  .flist{flex-direction:row;overflow-x:auto;padding-bottom:4px}
+  .fbtn{width:auto;white-space:nowrap;border:1px solid var(--line);border-radius:99px;flex:none}
+  .rail h2{display:none}
+  .addf{align-self:flex-start}
+  .brand h1{font-size:38px}
+}
+@media (max-width:560px){
+  .detail{grid-template-columns:minmax(0,1fr)}
+  .detail .cover{width:150px}
+  .form{grid-template-columns:minmax(0,1fr)}
+  .col-opt{display:none}
+  .tools .seg{margin-left:0}
+  .sheet{padding:18px}
+}
+
+/* standalone additions */
+.rail-h{margin-top:18px!important}
+.railtools{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+.railtools .btn{display:inline-block;text-align:left}
+#sync.warn{color:var(--danger);font-weight:700}
+.coverbox{display:flex;flex-direction:column}
+.cvctl{display:flex;flex-direction:column;gap:8px;min-width:0;flex:1}
+.cvbtns{display:flex;flex-wrap:wrap;gap:6px}
+a.btn{display:inline-block;text-decoration:none;color:var(--ink)}
+.drop{border:1.5px dashed var(--line);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--ink-2);text-align:center}
+.drop.over,.drop:focus-visible{border-color:var(--accent);background:var(--accent-soft);color:var(--ink)}
+.cands{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:10px;margin-top:10px}
+.cands:empty{display:none}
+.cand{display:flex;flex-direction:column;gap:4px;border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:6px;text-align:left;font-size:12px;line-height:1.25}
+.cand:hover{border-color:var(--accent)}
+.cand img{width:100%;aspect-ratio:2/3;object-fit:cover;border-radius:3px;background:var(--surface-2)}
+.cand span{overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.spine-ph{width:36px;height:112px;border-radius:2px;background:var(--surface-2) center/cover no-repeat;border:1px solid var(--line)}
+.spine-ph.empty{display:grid;place-items:center;font-size:10px;color:var(--ink-2);text-align:center}
+#spine-prev{flex:none}
+.spine.photo{background-size:cover;background-position:center;background-repeat:no-repeat}
+.spine.photo span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+@media (max-width:820px){.railtools{flex-direction:row;flex-wrap:wrap}.railtools .note{flex-basis:100%}}
+
+/* catalog */
+.tools.cat select,.tools.cat .seg{display:none}
+.tools.cat #q{flex:1 1 280px}
+.findbar{display:flex;gap:8px;margin:10px 0 6px}
+.findbar input{flex:1;min-width:0}
+input[type=search],.findbar input{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:9px 12px}
+.rh{margin:14px 0 6px;font:400 18px/1 var(--display);letter-spacing:.08em;color:var(--ink-2)}
+.fcard{border:1px solid var(--line);border-radius:10px;background:var(--surface);margin-bottom:8px;overflow:hidden}
+.fcard.open{border-color:var(--accent)}
+.frow,.catrow{display:flex;align-items:center;gap:12px;width:100%;text-align:left;border:0;background:none;padding:8px 10px}
+.catrow{border:1px solid var(--line);border-radius:10px;background:var(--surface);margin-bottom:8px}
+.frow:hover,.catrow:hover{background:var(--surface-2)}
+.ft{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
+.thumb{width:44px;flex:none}
+.thumb .cover{width:44px}
+.feds{display:flex;flex-direction:column;gap:6px;padding:4px 10px 10px}
+.fed{text-align:left;border:1px solid var(--line);background:var(--surface-2);border-radius:8px;padding:7px 10px;font-size:14px}
+.fed:hover,.fed.hi{border-color:var(--accent)}
+.catlist{display:flex;flex-direction:column}
+.lockcard{display:flex;gap:14px;align-items:flex-start;border:1px solid var(--line);background:var(--surface-2);border-radius:10px;padding:12px}
+.lc-cover{width:72px;flex:none}
+.lc-body{display:flex;flex-direction:column;gap:4px;align-items:flex-start;min-width:0}
+.dupebox{border:1px solid var(--warn);background:var(--surface-2);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:10px;align-items:flex-start}
+.dupebox:empty{display:none}
+.dlist,.drow{width:100%}
+.drow{display:flex;gap:10px;align-items:center}
+.dpair{border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px;display:flex;flex-direction:column;gap:8px}
+.dcols{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.dcard{display:flex;gap:10px;min-width:0}
+.edrow{display:flex;gap:12px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:8px}
+.rvbox{margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}
+.rvbox h3{margin:0;font:400 20px/1 var(--display);letter-spacing:.06em}
+.rvhead{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.stars{color:var(--warn);letter-spacing:2px;font-size:17px}
+.starpick{display:flex;gap:2px;margin-bottom:6px}
+.star{border:0;background:none;font-size:28px;line-height:1;color:var(--line);padding:0 2px}
+.star[aria-pressed="true"]{color:var(--warn)}
+.rv p{margin:6px 0;white-space:pre-wrap}
+.rvform textarea,.mergerow select{width:100%;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:8px 10px;margin-bottom:8px}
+.mergerow{display:flex;gap:8px;align-items:center}
+.mergerow select{margin:0;flex:1;min-width:0}
+.scan{position:fixed;inset:0;z-index:100;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:#fff;padding:16px}
+.scan video{max-width:100%;max-height:70vh;border-radius:10px}
+@media (max-width:560px){.dcols{grid-template-columns:1fr}.mergerow{flex-direction:column;align-items:stretch}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true">
+        <rect x="4" y="10" width="7" height="26" rx="1" fill="var(--accent)"/>
+        <rect x="13" y="4" width="12" height="32" rx="1" fill="var(--ink)"/>
+        <rect x="27" y="12" width="8" height="24" rx="1" fill="var(--accent)" opacity=".55"/>
+      </svg>
+      <div>
+        <h1>Longbox</h1>
+        <p id="sync">Comic collection tracker</p>
+      </div>
+    </div>
+    <ul class="stats" id="stats"></ul>
+  </header>
+
+  <div class="layout">
+    <nav class="rail" aria-label="Folders">
+      <h2>FOLDERS</h2>
+      <div class="flist" id="folders"></div>
+      <div id="newfolder"></div>
+      <h2 class="rail-h">LIBRARY</h2>
+      <div class="railtools">
+        <button type="button" class="btn small" data-act="fetch-all">Fetch missing covers</button>
+        <button type="button" class="btn small" data-act="export">Download backup</button>
+        <label class="btn small" for="import-file">Restore from backup</label>
+        <input id="import-file" class="sr" type="file" accept="application/json,.json">
+        <p class="note">Everything is stored in this browser. Download a backup now and then, and to move to another device.</p>
+      </div>
+    </nav>
+
+    <main>
+      <div class="bar">
+        <div class="seg" role="group" aria-label="Collection or wishlist">
+          <button type="button" data-tab="own" aria-pressed="true">Collection</button>
+          <button type="button" data-tab="wish" aria-pressed="false">Wishlist</button>
+          <button type="button" data-tab="catalog" aria-pressed="false">Catalog</button>
+        </div>
+        <button type="button" class="btn primary" data-act="add">+ Add book</button>
+      </div>
+
+      <div class="tools">
+        <label class="sr" for="q">Search</label>
+        <input id="q" type="search" placeholder="Search title, author, publisher or notes" autocomplete="off">
+        <label class="sr" for="sort">Sort</label>
+        <select id="sort"></select>
+        <label class="sr" for="author">Author</label>
+        <select id="author"></select>
+        <label class="sr" for="pub">Publisher</label>
+        <select id="pub"></select>
+        <label class="sr" for="fmt">Format</label>
+        <select id="fmt"></select>
+        <label class="sr" for="bind">Hardcover or paperback</label>
+        <select id="bind"></select>
+        <label class="sr" for="readf">Read status</label>
+        <select id="readf">
+          <option value="">Read and unread</option>
+          <option value="read">Read</option>
+          <option value="unread">Unread</option>
+        </select>
+        <div class="seg" role="group" aria-label="View">
+          <button type="button" data-view="shelf" aria-pressed="true">Shelf</button>
+          <button type="button" data-view="grid" aria-pressed="false">Covers</button>
+          <button type="button" data-view="list" aria-pressed="false">List</button>
+        </div>
+      </div>
+
+      <div id="content"></div>
+    </main>
+  </div>
+</div>
+
+<div class="scrim" id="modal" hidden><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="mtitle" id="sheet"></div></div>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script>
+(function(){
+'use strict';
+var $=function(s,r){return (r||document).querySelector(s)};
+var $$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
+var esc=function(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})};
+
+/* Single issues are hidden for now: only these formats count as books. */
+var FORMATS={trade:{label:'Collected edition',w:28,h:160},omnibus:{label:'Omnibus',w:50,h:184},compendium:{label:'Compendium',w:64,h:176}};
+var BINDINGS={paperback:'Paperback',hardcover:'Hardcover'};
+var CONDS={MT:'Mint',NM:'Near Mint',VF:'Very Fine',FN:'Fine',VG:'Very Good',GD:'Good',PR:'Poor'};
+var SORTS=[['release','Release date, oldest first'],['release-desc','Release date, newest first'],['reading','Reading order'],['author','Author A to Z'],['title','Title A to Z'],['added','Recently added'],['manual','My shelf order (drag to arrange)']];
+var MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+/* ---------- example data (details are illustrative) ---------- */
+var EX_FOLDERS=[
+  ['ex-batman','Batman','reading'],['ex-spidey','Spider-Man','reading'],['ex-xmen','X-Men','release'],
+  ['ex-miller','Frank Miller','release'],['ex-indie','Image and indie','author'],
+  ['ex-superman','Superman','release'],['ex-avengers','Avengers and friends','release'],['ex-vertigo','Vertigo','release']
+];
+// title, volume, subtitle, publisher, release, readOrder, format, binding, condition, read, folders, status, author
+var EX_COMICS=[
+  ['Batman: Year One','','','DC Comics','1988',1,'trade','paperback','NM',1,['ex-batman','ex-miller'],'own','Frank Miller, David Mazzucchelli'],
+  ['Batman: The Long Halloween','','','DC Comics','1998',2,'trade','paperback','NM',1,['ex-batman'],'own','Jeph Loeb, Tim Sale'],
+  ['Batman: The Killing Joke','','The Deluxe Edition','DC Comics','2008',3,'trade','hardcover','NM',1,['ex-batman'],'own','Alan Moore, Brian Bolland'],
+  ['Batman: Hush','1','','DC Comics','2003',4,'trade','hardcover','VF',0,['ex-batman'],'own','Jeph Loeb, Jim Lee'],
+  ['Batman: Knightfall Omnibus','1','','DC Comics','2017',5,'omnibus','hardcover','','',['ex-batman'],'wish','Doug Moench, Chuck Dixon, Jim Aparo'],
+  ['Batman: The Dark Knight Returns','','','DC Comics','1986',6,'trade','paperback','VF',1,['ex-batman','ex-miller'],'own','Frank Miller, Klaus Janson, Lynn Varley'],
+  ['The Amazing Spider-Man Omnibus','1','','Marvel','2007',1,'omnibus','hardcover','VF',1,['ex-spidey'],'own','Stan Lee, Steve Ditko'],
+  ['Spider-Man: Blue','','','Marvel','2003',2,'trade','paperback','NM',1,['ex-spidey'],'own','Jeph Loeb, Tim Sale'],
+  ["Spider-Man: Kraven's Last Hunt",'','','Marvel','2014',3,'trade','paperback','NM',0,['ex-spidey'],'own','J. M. DeMatteis, Mike Zeck'],
+  ['X-Men: The Dark Phoenix Saga','','','Marvel','1984',null,'trade','paperback','FN',1,['ex-xmen'],'own','Chris Claremont, John Byrne'],
+  ['The Uncanny X-Men Omnibus','1','','Marvel','2006',null,'omnibus','hardcover','NM',0,['ex-xmen'],'own','Chris Claremont, Dave Cockrum, John Byrne'],
+  ['Daredevil: Born Again','','','Marvel','1987',null,'trade','paperback','VF',1,['ex-miller'],'own','Frank Miller, David Mazzucchelli'],
+  ['Daredevil by Frank Miller and Klaus Janson Omnibus','','','Marvel','2016',null,'omnibus','hardcover','','',['ex-miller'],'wish','Frank Miller, Klaus Janson'],
+  ['Watchmen','','','DC Comics','1987',null,'trade','paperback','VF',1,[],'own','Alan Moore, Dave Gibbons'],
+  ['Absolute Watchmen','','','DC Comics','2005-10',null,'trade','hardcover','NM',1,[],'own','Alan Moore, Dave Gibbons'],
+  ['The Sandman','1','Preludes and Nocturnes','Vertigo','1991',null,'trade','paperback','FN',1,[],'own','Neil Gaiman, Sam Kieth, Mike Dringenberg'],
+  ['Absolute Sandman','1','','DC Comics','2006',null,'trade','hardcover','','',[],'wish','Neil Gaiman'],
+  ['Superman: Red Son','','','DC Comics','2004',null,'trade','paperback','NM',0,[],'own','Mark Millar, Dave Johnson'],
+  ['Ms. Marvel','1','No Normal','Marvel','2014',null,'trade','paperback','NM',1,[],'own','G. Willow Wilson, Adrian Alphona'],
+  ['The Complete Maus','','','Pantheon','1996',null,'trade','paperback','VF',1,[],'own','Art Spiegelman'],
+  ['Saga','1','','Image Comics','2012-10',null,'trade','paperback','NM',1,['ex-indie'],'own','Brian K. Vaughan, Fiona Staples'],
+  ['The Walking Dead Compendium','1','','Image Comics','2009-05',null,'compendium','paperback','NM',0,['ex-indie'],'own','Robert Kirkman, Tony Moore, Charlie Adlard'],
+  ['Invincible Compendium','1','','Image Comics','2011',null,'compendium','paperback','NM',1,['ex-indie'],'own','Robert Kirkman, Cory Walker, Ryan Ottley'],
+  ['Hellboy Library Edition','1','Seed of Destruction and Wake the Devil','Dark Horse','2008',null,'omnibus','hardcover','NM',0,['ex-indie'],'own','Mike Mignola'],
+  /* more shelves */
+  ['All-Star Superman','','','DC Comics','2007',null,'trade','hardcover','NM',1,['ex-superman'],'own','Grant Morrison, Frank Quitely'],
+  ['Superman: Birthright','','','DC Comics','2004',null,'trade','paperback','NM',1,['ex-superman'],'own','Mark Waid, Leinil Francis Yu'],
+  ['Superman for All Seasons','','','DC Comics','2003',null,'trade','paperback','VF',1,['ex-superman'],'own','Jeph Loeb, Tim Sale'],
+  ['Superman: Secret Origin','','','DC Comics','2010',null,'trade','hardcover','NM',0,['ex-superman'],'own','Geoff Johns, Gary Frank'],
+  ['The Death of Superman','','','DC Comics','1993',null,'trade','paperback','FN',1,['ex-superman'],'own','Dan Jurgens, Louise Simonson'],
+  ['Kingdom Come','','','DC Comics','1997',null,'trade','paperback','VF',1,['ex-superman'],'own','Mark Waid, Alex Ross'],
+  ['The Avengers Omnibus','1','','Marvel','2011',null,'omnibus','hardcover','VF',0,['ex-avengers'],'own','Stan Lee, Jack Kirby'],
+  ['Avengers Disassembled','','','Marvel','2005',null,'trade','paperback','NM',1,['ex-avengers'],'own','Brian Michael Bendis, David Finch'],
+  ['Marvels','','','Marvel','1994',null,'trade','paperback','VF',1,['ex-avengers'],'own','Kurt Busiek, Alex Ross'],
+  ['Civil War','','','Marvel','2007',null,'trade','paperback','NM',1,['ex-avengers'],'own','Mark Millar, Steve McNiven'],
+  ['Infinity Gauntlet','','','Marvel','1992',null,'trade','paperback','FN',1,['ex-avengers'],'own','Jim Starlin, George Perez, Ron Lim'],
+  ['Secret Wars','','','Marvel','1985',null,'trade','paperback','FN',0,['ex-avengers'],'own','Jim Shooter, Mike Zeck'],
+  ['Thor by Walter Simonson Omnibus','','','Marvel','2011',null,'omnibus','hardcover','NM',1,['ex-avengers'],'own','Walter Simonson'],
+  ['Captain America: The Winter Soldier Ultimate Collection','','','Marvel','2010',null,'trade','paperback','NM',1,['ex-avengers'],'own','Ed Brubaker, Steve Epting'],
+  ['Iron Man: Extremis','','','Marvel','2006',null,'trade','paperback','VF',1,['ex-avengers'],'own','Warren Ellis, Adi Granov'],
+  ['Black Panther: A Nation Under Our Feet','1','','Marvel','2016',null,'trade','paperback','NM',0,['ex-avengers'],'own','Ta-Nehisi Coates, Brian Stelfreeze'],
+  ['V for Vendetta','','','Vertigo','2005',null,'trade','paperback','VF',1,['ex-vertigo'],'own','Alan Moore, David Lloyd'],
+  ['Preacher','1','','Vertigo','2009',null,'trade','paperback','NM',1,['ex-vertigo'],'own','Garth Ennis, Steve Dillon'],
+  ['Fables','1','Legends in Exile','Vertigo','2002',null,'trade','paperback','NM',1,['ex-vertigo'],'own','Bill Willingham, Lan Medina'],
+  ['Y: The Last Man','1','Unmanned','Vertigo','2003',null,'trade','paperback','VF',1,['ex-vertigo'],'own','Brian K. Vaughan, Pia Guerra'],
+  ['Transmetropolitan','1','Back on the Street','Vertigo','1998',null,'trade','paperback','VF',1,['ex-vertigo'],'own','Warren Ellis, Darick Robertson'],
+  ['Hellblazer','1','Original Sins','Vertigo','1993',null,'trade','paperback','FN',0,['ex-vertigo'],'own','Jamie Delano, John Ridgway'],
+  ['100 Bullets','1','First Shot, Last Call','Vertigo','2000',null,'trade','paperback','NM',1,['ex-vertigo'],'own','Brian Azzarello, Eduardo Risso'],
+  ['Swamp Thing by Alan Moore','1','','Vertigo','2009',null,'trade','paperback','NM',1,['ex-vertigo'],'own','Alan Moore, Stephen Bissette, John Totleben'],
+  ['The Sandman','2','The Doll\'s House','Vertigo','1990',null,'trade','paperback','FN',1,['ex-vertigo'],'own','Neil Gaiman, Mike Dringenberg'],
+  ['The Sandman','3','Dream Country','Vertigo','1991',null,'trade','paperback','FN',1,['ex-vertigo'],'own','Neil Gaiman, Kelley Jones'],
+  ['Bone: The Complete Cartoon Epic','','','Cartoon Books','2004',null,'compendium','paperback','NM',1,['ex-indie'],'own','Jeff Smith'],
+  ['Usagi Yojimbo','1','The Ronin','Fantagraphics','1987',null,'trade','paperback','VF',1,[],'own','Stan Sakai'],
+  ['Persepolis','','','Pantheon','2003',null,'trade','paperback','VF',1,[],'own','Marjane Satrapi'],
+  ['Fun Home','','','Houghton Mifflin','2006',null,'trade','paperback','NM',1,[],'own','Alison Bechdel'],
+  ['Scott Pilgrim','1','Precious Little Life','Oni Press','2004',null,'trade','paperback','NM',1,[],'own','Bryan Lee O\'Malley'],
+  ['Blankets','','','Top Shelf','2003',null,'trade','paperback','VF',1,[],'own','Craig Thompson'],
+  ['From Hell','','','Top Shelf','1999',null,'trade','paperback','VF',0,[],'own','Alan Moore, Eddie Campbell'],
+  ['Locke and Key','1','Welcome to Lovecraft','IDW Publishing','2008',null,'trade','paperback','NM',1,['ex-indie'],'own','Joe Hill, Gabriel Rodriguez'],
+  ['Monstress','1','Awakening','Image Comics','2016',null,'trade','paperback','NM',1,['ex-indie'],'own','Marjorie Liu, Sana Takeda'],
+  ['Paper Girls','1','','Image Comics','2016',null,'trade','paperback','NM',0,['ex-indie'],'own','Brian K. Vaughan, Cliff Chiang'],
+  ['Descender','1','Tin Stars','Image Comics','2015',null,'trade','paperback','NM',1,['ex-indie'],'own','Jeff Lemire, Dustin Nguyen'],
+  ['The Umbrella Academy','1','Apocalypse Suite','Dark Horse','2008',null,'trade','paperback','NM',1,['ex-indie'],'own','Gerard Way, Gabriel Ba'],
+  ['Berserk Deluxe Edition','1','','Dark Horse','2019',null,'omnibus','hardcover','NM',0,[],'own','Kentaro Miura'],
+  ['Sin City','1','The Hard Goodbye','Dark Horse','1993',null,'trade','paperback','VF',1,['ex-miller'],'own','Frank Miller'],
+  ['300','','','Dark Horse','1999',null,'trade','paperback','VF',1,['ex-miller'],'own','Frank Miller, Lynn Varley'],
+  ['Wolverine','','','Marvel','1982',null,'trade','paperback','FN',1,['ex-xmen','ex-miller'],'own','Chris Claremont, Frank Miller'],
+  ['Ultimate Spider-Man Ultimate Collection','1','','Marvel','2005',4,'trade','paperback','NM',1,['ex-spidey'],'own','Brian Michael Bendis, Mark Bagley'],
+  ['Spider-Man: Life Story','','','Marvel','2019',5,'trade','paperback','NM',0,['ex-spidey'],'own','Chip Zdarsky, Mark Bagley'],
+  ['X-Men: Days of Future Past','','','Marvel','1989',null,'trade','paperback','FN',1,['ex-xmen'],'own','Chris Claremont, John Byrne'],
+  ['X-Men: God Loves, Man Kills','','','Marvel','1982',null,'trade','paperback','FN',1,['ex-xmen'],'own','Chris Claremont, Brent Anderson'],
+  ['Astonishing X-Men','1','Gifted','Marvel','2005',null,'trade','paperback','NM',1,['ex-xmen'],'own','Joss Whedon, John Cassaday'],
+  ['House of X and Powers of X','','','Marvel','2020',null,'trade','hardcover','NM',0,['ex-xmen'],'own','Jonathan Hickman, Pepe Larraz'],
+  ['Batman: The Court of Owls','','','DC Comics','2012',7,'trade','hardcover','NM',1,['ex-batman'],'own','Scott Snyder, Greg Capullo'],
+  ['Batman: Arkham Asylum','','','DC Comics','1989',8,'trade','hardcover','VF',1,['ex-batman'],'own','Grant Morrison, Dave McKean'],
+  ['Batman: Haunted Knight','','','DC Comics','1997',9,'trade','paperback','NM',0,['ex-batman'],'own','Jeph Loeb, Tim Sale'],
+  ['Fantastic Four Omnibus','1','','Marvel','2005',null,'omnibus','hardcover','','',['ex-avengers'],'wish','Stan Lee, Jack Kirby'],
+  ['Locke and Key Omnibus','1','','IDW Publishing','2020',null,'omnibus','hardcover','','',['ex-indie'],'wish','Joe Hill, Gabriel Rodriguez'],
+  ['Saga Book One','','','Image Comics','2017',null,'omnibus','hardcover','','',['ex-indie'],'wish','Brian K. Vaughan, Fiona Staples']
+];
+
+/* ---------- state ---------- */
+var S={comics:{},folders:{},views:{},works:{},editions:{},reviews:{},ignored:[],find:{q:'',open:'',ol:null,olState:'',olQ:'',isbn:{}},rv:{editing:false,rating:0},mergeTo:'',loaded:false,mode:'loading',
+  tab:'own',folder:'all',view:'shelf',sort:'release',q:'',pub:'',author:'',fmt:'',bind:'',read:'',
+  modal:null,addingFolder:false,renaming:false,confirm:''};
+var lastW=0, draftCover='', draftCoverUrl='', draftCoverColor='', draftSpine='', draftColor='', draftColorSrc='', lastFocus=null;
+
+try{var u=JSON.parse(localStorage.getItem('longbox-ui')||'{}'); if(u.view)S.view=u.view; if(u.tab)S.tab=u.tab; if(u.sort&&SORTS.some(function(s){return s[0]===u.sort}))S.sort=u.sort;}catch(e){}
+function saveUI(){try{localStorage.setItem('longbox-ui',JSON.stringify({view:S.view,tab:S.tab,sort:S.sort}))}catch(e){}}
+
+/* ---------- helpers ---------- */
+function hue(str){var h=2166136261;for(var i=0;i<str.length;i++){h^=str.charCodeAt(i);h=Math.imul(h,16777619)>>>0}h^=h>>>15;h=Math.imul(h,2246822507)>>>0;h^=h>>>13;return (h>>>0)%360}
+function num(v){var n=parseFloat(v);return isNaN(n)?Infinity:n}
+function cmpNum(a,b){return a===b?0:(a<b?-1:1)}
+function fmtDate(d){if(!d)return '';var m=/^(\d{4})-(\d{2})/.exec(d);if(m)return MONTHS[+m[2]-1]+' '+m[1];return d}
+function nameOf(c){return c.title+(c.issue?' Vol. '+c.issue:'')}
+function toast(msg){var t=$('#toast');t.textContent=msg;t.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(function(){t.hidden=true},3600)}
+function newId(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
+function list(o){return Object.keys(o).map(function(k){return o[k]})}
+function fmtLabel(c){var f=FORMATS[c.format];return f?f.label+' · '+(BINDINGS[c.binding]||'Paperback'):''}
+
+/* older saved data: hardcover used to be a format; single issues have no book format and stay hidden */
+function norm(c){
+  if(c.format==='hardcover'){c.format='trade';c.binding='hardcover'}
+  if(c.format==='trade'&&!c.binding)c.binding='paperback';
+  if(FORMATS[c.format]&&!c.binding)c.binding='paperback';
+  return c;
+}
+function isBook(c){return !!FORMATS[c.format]}
+
+function authorsOf(c){return String(c.author||'').split(/\s*(?:,|;|&|\band\b)\s*/i).map(function(s){return s.trim()}).filter(Boolean)}
+function authorKey(c){var a=authorsOf(c)[0];if(!a)return '￿';var p=a.split(/\s+/);return p[p.length-1].toLowerCase()+' '+a.toLowerCase()}
+
+function byTitle(a,b){return a.title.localeCompare(b.title)||cmpNum(num(a.issue),num(b.issue))}
+function byRelease(a,b){
+  if(a.releaseDate&&b.releaseDate){var d=a.releaseDate.localeCompare(b.releaseDate);if(d)return d}
+  else if(a.releaseDate)return -1; else if(b.releaseDate)return 1;
+  return byTitle(a,b);
+}
+var SORTERS={
+  'release':byRelease,
+  'release-desc':function(a,b){return -byRelease(a,b)},
+  'reading':function(a,b){return cmpNum(num(a.readOrder),num(b.readOrder))||byRelease(a,b)},
+  'author':function(a,b){return authorKey(a).localeCompare(authorKey(b))||byRelease(a,b)},
+  'title':byTitle,
+  'added':function(a,b){return (b.added||0)-(a.added||0)}
+};
+function orderMap(key){
+  var rec=key==='all'?S.views.all:S.folders[key], arr=(rec&&rec.order)||[], m={};
+  arr.forEach(function(id,i){m[id]=i});return m;
+}
+function sorterFor(sort,key){
+  if(sort==='manual'){
+    var m=orderMap(key);
+    return function(a,b){var x=m[a.id],y=m[b.id];return cmpNum(x===undefined?Infinity:x,y===undefined?Infinity:y)||byRelease(a,b)};
+  }
+  return SORTERS[sort]||byRelease;
+}
+
+/* ---------- selectors ---------- */
+function inTab(c){return S.tab==='wish'?c.status==='wish':c.status!=='wish'}
+function inFolder(c){return S.folder==='all'||(c.folderIds||[]).indexOf(S.folder)>-1}
+function scoped(){return list(S.comics).filter(function(c){return isBook(c)&&inTab(c)&&inFolder(c)})}
+function visible(){
+  var q=S.q.trim().toLowerCase();
+  return scoped().filter(function(c){
+    if(S.pub&&c.publisher!==S.pub)return false;
+    if(S.author&&authorsOf(c).map(function(a){return a.toLowerCase()}).indexOf(S.author.toLowerCase())<0)return false;
+    if(S.fmt&&c.format!==S.fmt)return false;
+    if(S.bind&&c.binding!==S.bind)return false;
+    if(S.tab==='own'&&S.read==='read'&&!c.read)return false;
+    if(S.tab==='own'&&S.read==='unread'&&c.read)return false;
+    if(q&&(c.title+' '+(c.subtitle||'')+' '+(c.author||'')+' '+(c.publisher||'')+' '+(c.isbn||'')+' '+(c.notes||'')).toLowerCase().indexOf(q)<0)return false;
+    return true;
+  }).sort(sorterFor(S.sort,S.folder));
+}
+
+/* ---------- persistence ---------- */
+/* ---------- storage: IndexedDB in this browser, with a localStorage fallback ---------- */
+var idb=null, saveTimer=null, saveFailed=false;
+function openIDB(){
+  return new Promise(function(res,rej){
+    if(!window.indexedDB){rej(new Error('IndexedDB is not available'));return}
+    var r=indexedDB.open('longbox',1);
+    r.onupgradeneeded=function(){r.result.createObjectStore('kv')};
+    r.onsuccess=function(){res(r.result)};
+    r.onerror=function(){rej(r.error)};
+  });
+}
+function idbGet(key){
+  return new Promise(function(res,rej){
+    var q=idb.transaction('kv').objectStore('kv').get(key);
+    q.onsuccess=function(){res(q.result)};
+    q.onerror=function(){rej(q.error)};
+  });
+}
+function idbPut(key,val){
+  return new Promise(function(res,rej){
+    var tx=idb.transaction('kv','readwrite');
+    tx.objectStore('kv').put(val,key);
+    tx.oncomplete=function(){res()};
+    tx.onerror=tx.onabort=function(){rej(tx.error)};
+  });
+}
+function snapshot(){
+  var cs={};list(S.comics).forEach(function(c){cs[c.id]=stripCopy(c)});
+  return {version:3,works:S.works,editions:S.editions,reviews:S.reviews,ignored:S.ignored,comics:cs,folders:S.folders,views:S.views};
+}
+function persist(){hydrateAll();clearTimeout(saveTimer);saveTimer=setTimeout(flush,250)}
+function flush(){
+  clearTimeout(saveTimer);
+  var p;
+  try{p=idb?idbPut('state',snapshot()):Promise.resolve(localStorage.setItem('longbox-data-v3',JSON.stringify(snapshot())))}
+  catch(e){p=Promise.reject(e)}
+  return p.then(function(){if(saveFailed){saveFailed=false;renderTop()}},function(e){
+    if(!saveFailed){saveFailed=true;renderTop();toast('Could not save to this browser. Export a backup so you do not lose your books.')}
+    if(window.console)console.warn(e);
+  });
+}
+
+function putComic(c){norm(c);if(c.editionId)hydrate(c);S.comics[c.id]=c;persist();render()}
+function delComic(id){delete S.comics[id];gcCatalog();persist();render()}
+function putFolder(f){S.folders[f.id]=f;persist();render()}
+function putView(id,patch){S.views[id]=Object.assign({},S.views[id],patch,{id:id});persist();render()}
+function delFolder(id){
+  list(S.comics).forEach(function(c){if((c.folderIds||[]).indexOf(id)>-1)c.folderIds=c.folderIds.filter(function(x){return x!==id})});
+  delete S.folders[id];
+  if(S.folder===id)S.folder='all';
+  persist();render();
+}
+/* adds only what is missing, so edits to examples you already have are kept */
+function loadExamples(){
+  var now=Date.now();
+  EX_FOLDERS.forEach(function(f,i){if(!S.folders[f[0]])S.folders[f[0]]={id:f[0],name:f[1],sort:f[2],created:now+i,example:true}});
+  EX_COMICS.forEach(function(r,i){
+    var id='ex-c'+i;
+    if(!S.comics[id])S.comics[id]={id:id,title:r[0],issue:r[1],subtitle:r[2],publisher:r[3],releaseDate:r[4],readOrder:r[5],format:r[6],binding:r[7],condition:r[8],read:!!r[9],folderIds:r[10],status:r[11],author:r[12],notes:'',cover:'',added:now-i*1000,example:true};
+  });
+  migrate();S.tab='own';persist();render();
+}
+function clearExamples(){
+  list(S.comics).forEach(function(c){if(c.example)delete S.comics[c.id]});
+  gcCatalog();
+  list(S.folders).forEach(function(f){if(f.example)delete S.folders[f.id]});
+  if(S.folder!=='all'&&!S.folders[S.folder])S.folder='all';
+  persist();render();
+}
+
+/* ---------- backup ---------- */
+function exportBackup(){
+  var blob=new Blob([JSON.stringify(snapshot())],{type:'application/json'});
+  var a=document.createElement('a'), d=new Date();
+  a.href=URL.createObjectURL(blob);
+  a.download='longbox-backup-'+d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')+'.json';
+  document.body.appendChild(a);a.click();
+  setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},500);
+  toast('Backup downloaded');
+}
+async function importBackup(file){
+  try{
+    var j=JSON.parse(await file.text());
+    if(!j||typeof j.comics!=='object')throw new Error('not a backup');
+    var n=0;
+    ['works','editions','reviews'].forEach(function(k){Object.keys(j[k]||{}).forEach(function(id){S[k][id]=j[k][id]})});
+    Object.keys(j.comics).forEach(function(k){var c=j.comics[k];if(c&&(c.title||c.editionId)){c.id=c.id||k;S.comics[c.id]=c;n++}});
+    Object.keys(j.folders||{}).forEach(function(k){var f=j.folders[k];if(f&&f.name){f.id=f.id||k;S.folders[f.id]=f}});
+    Object.keys(j.views||{}).forEach(function(k){S.views[k]=Object.assign({id:k},j.views[k])});
+    (j.ignored||[]).forEach(function(x){if(S.ignored.indexOf(x)<0)S.ignored.push(x)});
+    migrate();consolidate();hydrateAll();
+    persist();render();toast('Imported '+n+' book'+(n===1?'':'s')+'. Books that matched ones you already have were linked to them.');
+  }catch(e){toast('That file is not a Longbox backup.')}
+}
+
+/* ---------- images: covers, spine photos and colors ---------- */
+function blobToImage(blob){
+  return new Promise(function(res,rej){
+    var url=URL.createObjectURL(blob), img=new Image();
+    img.onload=function(){URL.revokeObjectURL(url);res(img)};
+    img.onerror=function(){URL.revokeObjectURL(url);rej(new Error('That file could not be read as an image.'))};
+    img.src=url;
+  });
+}
+function shrink(img,maxW,maxH,cap){
+  var s=Math.min(1,maxW/img.width,maxH/img.height), cv=document.createElement('canvas');
+  cv.width=Math.max(1,Math.round(img.width*s));cv.height=Math.max(1,Math.round(img.height*s));
+  var x=cv.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,cv.width,cv.height);x.drawImage(img,0,0,cv.width,cv.height);
+  var q=0.84,out=cv.toDataURL('image/jpeg',q);
+  while(out.length>cap&&q>0.4){q-=0.1;out=cv.toDataURL('image/jpeg',q)}
+  return out;
+}
+function rgb2hsl(r,g,b){
+  r/=255;g/=255;b/=255;
+  var mx=Math.max(r,g,b),mn=Math.min(r,g,b),l=(mx+mn)/2,h=0,s=0,d=mx-mn;
+  if(d){
+    s=l>0.5?d/(2-mx-mn):d/(mx+mn);
+    h=mx===r?((g-b)/d+(g<b?6:0)):(mx===g?(b-r)/d+2:(r-g)/d+4);
+    h*=60;
+  }
+  return [h,s,l];
+}
+function hsl2hex(h,s,l){
+  var a=s*Math.min(l,1-l);
+  function f(n){var k=(n+h/30)%12,v=l-a*Math.max(-1,Math.min(k-3,9-k,1));return ('0'+Math.round(v*255).toString(16)).slice(-2)}
+  return '#'+f(0)+f(8)+f(4);
+}
+/* A spine color taken from the cover: the average color, weighted toward vivid mid-tones, then
+   nudged so white spine text stays readable. */
+function dominantColor(img){
+  var w=40,h=60,cv=document.createElement('canvas');cv.width=w;cv.height=h;
+  var x=cv.getContext('2d',{willReadFrequently:true});x.drawImage(img,0,0,w,h);
+  var d=x.getImageData(0,0,w,h).data,R=0,G=0,B=0,W=0;
+  for(var i=0;i<d.length;i+=4){
+    var r=d[i],g=d[i+1],b=d[i+2],mx=Math.max(r,g,b),mn=Math.min(r,g,b),sat=mx?(mx-mn)/mx:0,lig=(mx+mn)/510;
+    var wt=0.1+sat*sat*3+(lig>0.12&&lig<0.9?0.3:0);
+    R+=r*wt;G+=g*wt;B+=b*wt;W+=wt;
+  }
+  var hsl=rgb2hsl(R/W,G/W,B/W);
+  return hsl2hex(hsl[0],Math.max(0.35,Math.min(0.75,hsl[1])),Math.max(0.24,Math.min(0.46,hsl[2])));
+}
+async function ingestCover(blob){var img=await blobToImage(blob);return {url:shrink(img,360,540,180000),color:dominantColor(img)}}
+async function ingestSpine(blob){var img=await blobToImage(blob);return shrink(img,160,460,90000)}
+
+/* ---------- online covers (Open Library) ---------- */
+var OL='https://openlibrary.org', OLC='https://covers.openlibrary.org';
+function cleanIsbn(s){return String(s||'').replace(/[^0-9Xx]/g,'').toUpperCase()}
+function validIsbn(s){return s.length===10||s.length===13}
+function olCoverUrl(id,size){return OLC+'/b/id/'+id+'-'+size+'.jpg'}
+async function fetchBlob(url){
+  var r=await fetch(url);
+  if(!r.ok)throw new Error('HTTP '+r.status);
+  var b=await r.blob();
+  if(!/^image\//.test(b.type)||b.size<500)throw new Error('No image');
+  return b;
+}
+function probe(url){
+  return new Promise(function(res){var i=new Image();i.onload=function(){res(i.naturalWidth>1)};i.onerror=function(){res(false)};i.src=url});
+}
+/* Try to download the image so it can be stored with the book. If the browser blocks that (CORS),
+   fall back to showing the remote image by link, which still works as long as the site is up. */
+async function coverByIsbn(isbn){
+  var u=OLC+'/b/isbn/'+isbn+'-L.jpg?default=false';
+  try{return await ingestCover(await fetchBlob(u))}
+  catch(e){
+    if(e instanceof TypeError&&navigator.onLine!==false&&await probe(u))return {url:'',remote:u,color:''};
+    throw e;
+  }
+}
+async function coverFromUrl(u){
+  try{return await ingestCover(await fetchBlob(u))}
+  catch(e){return {url:'',remote:u,color:''}}
+}
+async function searchCovers(title,author){
+  var a=authorsOf({author:author})[0]||'';
+  var url=OL+'/search.json?title='+encodeURIComponent(title)+(a?'&author='+encodeURIComponent(a):'')+'&limit=24&fields=key,title,author_name,cover_i,first_publish_year,isbn';
+  var r=await fetch(url);
+  if(!r.ok)throw new Error('HTTP '+r.status);
+  var j=await r.json();
+  return (j.docs||[]).filter(function(d){return d.cover_i}).slice(0,10);
+}
+/* The cover belongs to the edition, so every copy of it shows it. The spine color follows the cover unless you chose one. */
+function applyCover(c,res){
+  var e=S.editions[c.editionId];
+  if(e){e.cover=res.url||'';e.coverUrl=res.url?'':(res.remote||'');e.coverColor=res.color||''}
+  var n=Object.assign({},c);
+  if(res.color&&(!validHex(c.color)||c.colorSource==='cover')){n.color=res.color;n.colorSource='cover'}
+  return n;
+}
+var fetching=false;
+async function fetchMissingCovers(){
+  if(fetching)return;
+  var todo=list(S.comics).filter(function(c){return isBook(c)&&c.isbn&&!c.cover&&!c.coverUrl});
+  if(!todo.length){toast('No books with an ISBN are missing a cover.');return}
+  fetching=true;var ok=0,miss=0,offline=false;
+  for(var i=0;i<todo.length;i++){
+    toast('Fetching covers '+(i+1)+' of '+todo.length+'…');
+    try{
+      var cur=S.comics[todo[i].id]||todo[i];
+      if(cur.cover||cur.coverUrl)continue;
+      var res=await coverByIsbn(cur.isbn);
+      putComic(applyCover(cur,res));ok++;
+    }catch(e){
+      if(navigator.onLine===false){offline=true;break}
+      miss++;
+    }
+    await new Promise(function(r){setTimeout(r,700)});
+  }
+  fetching=false;
+  toast(offline?'Could not reach Open Library. Check your connection and try again.':'Added '+ok+' cover'+(ok===1?'':'s')+(miss?', '+miss+' not found':''));
+}
+
+/* ---------- catalog: works, editions and my copies ----------
+   A WORK is the book itself (Batman: Year One). An EDITION is one printing of it (the 2005 paperback,
+   the hardcover, an ISBN). A COPY is the entry on your shelf and points at one edition.
+   Reviews belong to the work, so every edition and every owner lands on the same review page. */
+var W_FIELDS=['title','issue','subtitle','author'];
+var E_FIELDS=['isbn','publisher','releaseDate','format','binding','cover','coverUrl','coverColor'];
+var NUMWORDS={one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,ten:10,eleven:11,twelve:12};
+var SAME=0.99, NEAR=0.8, SUGGEST=0.66;
+
+/* ----- matching ----- */
+function normTitle(s){
+  s=String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/&/g,' and ').replace(/['’`]/g,'');
+  s=s.replace(/\b(hc|tpb|hardcover|paperback|edition|deluxe)\b/g,' ').replace(/[^a-z0-9]+/g,' ').trim();
+  s=s.replace(/^(the|a|an) /,'');
+  s=s.replace(/\b(volume|vol|book|part|v)\s*(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b/g,function(m,a,n){return 'v'+(NUMWORDS[n]||n)});
+  return s.replace(/\s+/g,' ').trim();
+}
+function workKey(w){
+  var t=normTitle(w.title);
+  var v=String(w.issue||'').toLowerCase().replace(/^\s*(volume|vol|book|part|v)\.?\s*/,'').replace(/[^a-z0-9.]/g,'').replace(/^0+(?=\d)/,'');
+  var m=/ v(\d+)$/.exec(' '+t);
+  if(m){if(!v)v=m[1];t=(' '+t).replace(/ v\d+$/,'').trim()}
+  return {t:t,v:v};
+}
+function tokens(s){return s?s.split(' '):[]}
+function jacc(a,b){
+  var A={},B={},i=0,na=0,nb=0;
+  tokens(a).forEach(function(x){A[x]=1});tokens(b).forEach(function(x){B[x]=1});
+  Object.keys(A).forEach(function(x){na++;if(B[x])i++});nb=Object.keys(B).length;
+  return na&&nb?i/(na+nb-i):0;
+}
+function bigrams(s){s=s.replace(/ /g,'');var o={},n=0;for(var i=0;i<s.length-1;i++){var g=s.substr(i,2);o[g]=(o[g]||0)+1;n++}return {o:o,n:n}}
+function dice(a,b){
+  var A=bigrams(a),B=bigrams(b),m=0;if(!A.n||!B.n)return 0;
+  Object.keys(A.o).forEach(function(g){if(B.o[g])m+=Math.min(A.o[g],B.o[g])});
+  return 2*m/(A.n+B.n);
+}
+function surnames(a){
+  return authorsOf({author:a}).map(function(n){var p=n.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z\s]/g,'').trim().split(/\s+/);return p[p.length-1]}).filter(Boolean);
+}
+function authOverlap(a,b){
+  var A=surnames(a),B=surnames(b);if(!A.length||!B.length)return null;
+  return A.some(function(x){return B.indexOf(x)>-1});
+}
+/* how likely two entries are the same book: 1 is certain, below 0.8 is treated as different */
+function workScore(a,b){
+  var ka=workKey(a),kb=workKey(b);
+  if(!ka.t||!kb.t)return 0;
+  if(ka.v&&kb.v&&ka.v!==kb.v)return 0;
+  var s=ka.t===kb.t?1:Math.max(jacc(ka.t,kb.t),dice(ka.t,kb.t)*0.95);
+  if(!!ka.v!==!!kb.v)s*=0.85;
+  var ao=authOverlap(a.author,b.author);
+  if(ao===true)s=Math.min(1,s+0.06);else if(ao===false)s*=0.75;
+  if(ka.t!==kb.t)s=Math.min(s,0.95);
+  return s;
+}
+/* how well a typed search matches a catalog book */
+function queryScore(q,w){
+  var qn=normTitle(q);if(!qn)return 0;
+  var hay=normTitle(w.title+' '+(w.issue?'vol '+w.issue:'')+' '+(w.author||''));
+  var ht=tokens(hay), qt=tokens(qn), hit=0;
+  qt.forEach(function(t){if(ht.some(function(h){return h===t||(t.length>1&&h.indexOf(t)===0)}))hit++});
+  var s=hit/qt.length;
+  if(s<1&&!(qt.length>=3&&s>=SUGGEST)){s=Math.max(0,dice(qn,normTitle(w.title))*0.9)}
+  return s>=SUGGEST?s+(normTitle(w.title).indexOf(qn)===0?0.2:0):0;
+}
+function isbn13(s){
+  s=cleanIsbn(s);
+  if(s.length===10){var b='978'+s.slice(0,9),sum=0;for(var i=0;i<12;i++)sum+=(+b[i])*(i%2?3:1);return b+((10-sum%10)%10)}
+  return s;
+}
+
+/* ----- records ----- */
+function editionsOf(wid){return list(S.editions).filter(function(e){return e.workId===wid})}
+function copiesOf(eid){return list(S.comics).filter(function(c){return c.editionId===eid})}
+function workCopies(wid){return list(S.comics).filter(function(c){var e=S.editions[c.editionId];return e&&e.workId===wid})}
+function reviewsOf(wid){return list(S.reviews).filter(function(r){return r.workId===wid}).sort(function(a,b){return (b.updated||b.created||0)-(a.updated||a.created||0)})}
+function fillBlank(o,f,keys){keys.forEach(function(k){if(!o[k]&&f[k])o[k]=f[k]})}
+function fillEdition(e,f){fillBlank(e,f,E_FIELDS);e.isbn=isbn13(e.isbn)}
+function newWork(f){var w={id:newId('w'),title:f.title||'',issue:f.issue||'',subtitle:f.subtitle||'',author:f.author||'',created:Date.now()};S.works[w.id]=w;return w}
+function newEdition(wid,f){
+  var e={id:newId('e'),workId:wid,created:Date.now()};
+  E_FIELDS.forEach(function(k){e[k]=f[k]||''});
+  e.format=f.format||'trade';e.binding=f.binding||'paperback';e.isbn=isbn13(e.isbn);
+  S.editions[e.id]=e;return e;
+}
+function editionByIsbn(isbn){isbn=isbn13(isbn);if(!isbn)return null;return list(S.editions).filter(function(e){return e.isbn===isbn})[0]||null}
+function sameEdition(e,f){
+  return (e.binding||'paperback')===(f.binding||'paperback')&&(e.format||'trade')===(f.format||'trade')&&
+    (!f.publisher||!e.publisher||String(e.publisher).toLowerCase()===String(f.publisher).toLowerCase())&&
+    (!f.releaseDate||!e.releaseDate||String(e.releaseDate)===String(f.releaseDate))&&
+    (!f.isbn||!e.isbn||isbn13(e.isbn)===isbn13(f.isbn));
+}
+function nearWorks(f,min){
+  return list(S.works).map(function(w){return {work:w,score:workScore(f,w)}}).filter(function(x){return x.score>=min}).sort(function(a,b){return b.score-a.score});
+}
+/* Find or create the work and edition for a set of book details. Nothing already in the catalog is overwritten. */
+function resolveTarget(f,opts){
+  opts=opts||{};
+  var ed=editionByIsbn(f.isbn);
+  if(ed&&S.works[ed.workId]){var w0=S.works[ed.workId];fillBlank(w0,f,['subtitle','author']);fillEdition(ed,f);return {work:w0,edition:ed}}
+  var w=opts.workId?S.works[opts.workId]:null;
+  if(!w&&!opts.forceNew){var n=nearWorks(f,SAME)[0];if(n)w=n.work}
+  if(w){
+    fillBlank(w,f,['subtitle','author']);
+    var e=editionsOf(w.id).filter(function(x){return sameEdition(x,f)})[0];
+    if(e){fillEdition(e,f);return {work:w,edition:e}}
+    return {work:w,edition:newEdition(w.id,f)};
+  }
+  w=newWork(f);return {work:w,edition:newEdition(w.id,f)};
+}
+/* copies show the shared details of their edition and work */
+function hydrate(c){
+  var e=S.editions[c.editionId], w=e&&S.works[e.workId];
+  if(!e||!w)return false;
+  W_FIELDS.forEach(function(k){c[k]=w[k]||''});
+  E_FIELDS.forEach(function(k){c[k]=e[k]||''});
+  c.workId=w.id;return true;
+}
+function hydrateAll(){list(S.comics).forEach(function(c){if(c.editionId)hydrate(c)})}
+/* older data, and imports, carry the details on each copy: link them into the catalog */
+function migrate(){
+  var n=0;
+  list(S.comics).forEach(function(c){
+    norm(c);
+    if(!isBook(c))return;
+    if(!c.editionId||!S.editions[c.editionId]){
+      if(!c.title)return;
+      c.editionId=resolveTarget(c).edition.id;n++;
+    }
+    hydrate(c);
+  });
+  return n;
+}
+function stripCopy(c){
+  if(!c.editionId)return c;
+  var o={};Object.keys(c).forEach(function(k){if(W_FIELDS.indexOf(k)<0&&E_FIELDS.indexOf(k)<0&&k!=='workId')o[k]=c[k]});
+  return o;
+}
+function gcCatalog(){
+  var used={},wused={};
+  list(S.comics).forEach(function(c){if(c.editionId)used[c.editionId]=1});
+  list(S.editions).forEach(function(e){if(!used[e.id])delete S.editions[e.id]});
+  list(S.editions).forEach(function(e){wused[e.workId]=1});
+  list(S.reviews).forEach(function(r){wused[r.workId]=1});
+  list(S.works).forEach(function(w){if(!wused[w.id])delete S.works[w.id]});
+}
+function mergeEditions(keepId,dropId){
+  var k=S.editions[keepId],d=S.editions[dropId];
+  if(keepId===dropId||!k||!d)return;
+  fillEdition(k,d);
+  list(S.comics).forEach(function(c){if(c.editionId===dropId)c.editionId=keepId});
+  delete S.editions[dropId];
+}
+function dedupeEditions(wid){
+  var eds=editionsOf(wid);
+  for(var i=0;i<eds.length;i++)for(var j=i+1;j<eds.length;j++){
+    var a=eds[i],b=eds[j];
+    if(S.editions[a.id]&&S.editions[b.id]&&sameEdition(a,b))mergeEditions(a.id,b.id);
+  }
+}
+function mergeWorks(keepId,dropId){
+  var k=S.works[keepId],d=S.works[dropId];
+  if(keepId===dropId||!k||!d)return;
+  fillBlank(k,d,['subtitle','author']);
+  list(S.editions).forEach(function(e){if(e.workId===dropId)e.workId=keepId});
+  var mine=reviewsOf(keepId)[0];
+  reviewsOf(dropId).forEach(function(r){
+    if(!mine){r.workId=keepId;mine=r}
+    else if((r.updated||r.created||0)>(mine.updated||mine.created||0)){delete S.reviews[mine.id];r.workId=keepId;mine=r}
+    else delete S.reviews[r.id];
+  });
+  delete S.works[dropId];
+  dedupeEditions(keepId);
+}
+/* after an import: fold together anything that is clearly the same book or the same ISBN */
+function consolidate(){
+  var ws=list(S.works).sort(function(a,b){return (a.created||0)-(b.created||0)});
+  ws.forEach(function(w){
+    ws.forEach(function(o){
+      if(o.id===w.id||!S.works[w.id]||!S.works[o.id])return;
+      var a=workKey(w),b=workKey(o);
+      if(a.t&&a.t===b.t&&a.v===b.v&&authOverlap(w.author,o.author)!==false)mergeWorks(w.id,o.id);
+    });
+  });
+  var seen={};
+  list(S.editions).forEach(function(e){
+    if(!e.isbn||!S.editions[e.id])return;
+    var k=seen[e.isbn]&&S.editions[seen[e.isbn]];
+    if(k){if(k.workId!==e.workId)mergeWorks(k.workId,e.workId);if(S.editions[e.id]&&S.editions[k.id])mergeEditions(k.id,e.id)}
+    else seen[e.isbn]=e.id;
+  });
+  gcCatalog();
+}
+function dupeKey(a,b){return [a,b].sort().join('~')}
+function findDupes(){
+  var ws=list(S.works),out=[],i,j;
+  for(i=0;i<ws.length;i++)for(j=i+1;j<ws.length;j++){
+    var s=workScore(ws[i],ws[j]);
+    if(s>=NEAR&&S.ignored.indexOf(dupeKey(ws[i].id,ws[j].id))<0)out.push({type:'work',a:ws[i].id,b:ws[j].id,score:s});
+  }
+  ws.forEach(function(w){
+    var eds=editionsOf(w.id);
+    for(i=0;i<eds.length;i++)for(j=i+1;j<eds.length;j++)
+      if(sameEdition(eds[i],eds[j])&&S.ignored.indexOf(dupeKey(eds[i].id,eds[j].id))<0)out.push({type:'edition',a:eds[i].id,b:eds[j].id,score:0.9});
+  });
+  return out.sort(function(x,y){return y.score-x.score});
+}
+
+/* ----- reviews (they belong to the work) ----- */
+function avgRating(wid){var rs=reviewsOf(wid).filter(function(r){return r.rating});return rs.length?rs.reduce(function(s,r){return s+r.rating},0)/rs.length:0}
+function stars(n){var s='',i;for(i=1;i<=5;i++)s+=i<=Math.round(n)?'★':'☆';return s}
+function edLabel(e){
+  var f=FORMATS[e.format];
+  return [(BINDINGS[e.binding]||'Paperback')+(f?' '+f.label.toLowerCase():''),e.publisher,e.releaseDate?String(e.releaseDate).slice(0,4):'',e.isbn?'ISBN '+e.isbn:''].filter(Boolean).join(' · ');
+}
+function reviewsHTML(wid){
+  var w=S.works[wid];if(!w)return '';
+  var rs=reviewsOf(wid), mine=rs[0], avg=avgRating(wid), body;
+  var head='<div class="rvhead"><h3>Reviews</h3>'+(rs.length?'<span class="stars" role="img" aria-label="Average rating '+avg.toFixed(1)+' out of 5">'+stars(avg)+'</span><span class="note">'+avg.toFixed(1)+' · '+rs.length+(rs.length===1?' review':' reviews')+'</span>':'<span class="note">No reviews yet</span>')+'</div>';
+  if(mine&&!S.rv.editing){
+    body='<div class="rv"><div class="stars" role="img" aria-label="'+mine.rating+' out of 5">'+stars(mine.rating)+'</div>'+(mine.text?'<p>'+esc(mine.text)+'</p>':'')+
+      '<div class="note">Your review'+(mine.editionLabel?' · on '+esc(mine.editionLabel):'')+'</div>'+
+      '<div class="chips"><button type="button" class="btn small" data-act="edit-review">Edit</button><button type="button" class="btn small danger" data-act="del-review">Delete</button></div></div>';
+  } else {
+    var r=S.rv.rating||0;
+    body='<form class="rvform" data-form="review" data-wid="'+esc(wid)+'"><div class="starpick" role="group" aria-label="Your rating">'+
+      [1,2,3,4,5].map(function(n){return '<button type="button" class="star" data-star="'+n+'" aria-label="'+n+' star'+(n>1?'s':'')+'" aria-pressed="'+(n<=r)+'">★</button>'}).join('')+'</div>'+
+      '<label class="sr" for="rv-text">Review</label><textarea id="rv-text" rows="3" placeholder="What did you think? Art, story, how the edition holds up">'+esc(mine&&S.rv.editing?mine.text:'')+'</textarea>'+
+      '<div class="chips"><button type="submit" class="btn small primary">'+(mine?'Save changes':'Post review')+'</button>'+(mine?'<button type="button" class="btn small" data-act="cancel-review">Cancel</button>':'')+'</div></form>';
+  }
+  return '<section class="rvbox">'+head+body+'<p class="note">Reviews are saved with your collection on this device for now.</p></section>';
+}
+function editionLabelFor(wid){
+  var c=workCopies(wid)[0];if(!c)return '';
+  return [(BINDINGS[c.binding]||''),c.publisher,c.releaseDate?String(c.releaseDate).slice(0,4):''].filter(Boolean).join(' · ');
+}
+function curWid(){return S.modal&&S.modal.mode==='work'?S.modal.workId:((S.comics[S.modal&&S.modal.id]||{}).workId)}
+function reopenModal(){
+  if(S.modal&&S.modal.mode==='work')workModal(S.modal.workId);
+  else if(S.modal&&S.modal.id)viewModal(S.modal.id);
+}
+
+/* ----- online lookups (Open Library) ----- */
+async function searchOL(q){
+  var r=await fetch(OL+'/search.json?q='+encodeURIComponent(q)+'&limit=20&fields=key,title,author_name,cover_i,first_publish_year,isbn,publisher');
+  if(!r.ok)throw new Error('HTTP '+r.status);
+  return (await r.json()).docs||[];
+}
+async function lookupIsbnOL(isbn){
+  var k='ISBN:'+isbn, r=await fetch(OL+'/api/books?bibkeys='+k+'&format=json&jscmd=data');
+  if(!r.ok)throw new Error('HTTP '+r.status);
+  var d=(await r.json())[k];if(!d)return null;
+  var y=/\b(\d{4})\b/.exec(d.publish_date||'');
+  return {title:String(d.title||''),subtitle:String(d.subtitle||''),author:(d.authors||[]).map(function(a){return a.name}).join(', '),
+    publisher:((d.publishers||[])[0]||{}).name||'',releaseDate:y?y[1]:'',isbn:isbn};
+}
+function olDraft(d){
+  var isb=(d.isbn||[]).filter(function(x){return x.length===13})[0]||(d.isbn||[])[0]||'';
+  return {title:d.title||'',author:(d.author_name||[]).slice(0,3).join(', '),publisher:(d.publisher||[])[0]||'',
+    releaseDate:d.first_publish_year?String(d.first_publish_year):'',isbn:isb?isbn13(isb):'',coverId:d.cover_i||0};
+}
+
+/* ----- add flow, step 1: find the book first ----- */
+function scanSupported(){return ('BarcodeDetector' in window)&&!!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia)}
+function thumbFor(w){
+  var e=editionsOf(w.id).filter(function(x){return x.cover||x.coverUrl})[0];
+  return '<div class="thumb">'+coverHTML(Object.assign({},w,e||{}))+'</div>';
+}
+function metaFor(w){
+  var eds=editionsOf(w.id), rs=reviewsOf(w.id), own=workCopies(w.id);
+  return eds.length+(eds.length===1?' edition':' editions')+(rs.length?' · '+stars(avgRating(w.id))+' ('+rs.length+')':'')+(own.length?' · you have '+own.length:'');
+}
+function workCard(w,hiEd){
+  var open=S.find.open===w.id||!!hiEd, h='<div class="fcard'+(open?' open':'')+'"><button type="button" class="frow" data-fwork="'+esc(w.id)+'">'+thumbFor(w)+
+    '<span class="ft"><b>'+esc(nameOf(w))+'</b><span class="note">'+esc(w.author||'No author')+'</span><span class="note">'+esc(metaFor(w))+'</span></span></button>';
+  if(open){
+    h+='<div class="feds"><div class="note">Which edition do you have?</div>'+editionsOf(w.id).map(function(e){
+      var n=copiesOf(e.id).length;
+      return '<button type="button" class="fed'+(hiEd===e.id?' hi':'')+'" data-pick-ed="'+esc(e.id)+'">'+esc(edLabel(e))+(n?' <span class="note">(you have '+n+')</span>':'')+'</button>';
+    }).join('')+'<button type="button" class="fed" data-pick-work="'+esc(w.id)+'">A different edition of this book…</button></div>';
+  }
+  return h+'</div>';
+}
+function renderFind(){
+  var el=$('#find-results');if(!el)return;
+  var q=S.find.q.trim(), html='', ib=cleanIsbn(q);
+  if(!q){
+    var n=list(S.works).length;
+    el.innerHTML='<p class="note">'+(n?'Your catalog has '+n+(n===1?' book':' books')+'. Start typing to find one.':'Your catalog is empty. Type a title and search Open Library, or enter a book by hand.')+'</p>';return;
+  }
+  if(/^[\d\-\sXx]+$/.test(q)&&validIsbn(ib)){
+    var k=isbn13(ib), ed=editionByIsbn(k);
+    if(ed&&S.works[ed.workId]){html='<h3 class="rh">Exact ISBN match</h3>'+workCard(S.works[ed.workId],ed.id)}
+    else{
+      var st=S.find.isbn[k];
+      if(!st){S.find.isbn[k]={state:'loading'};lookupIsbnFlow(k)}
+      st=S.find.isbn[k];
+      if(st.state==='loading')html='<p class="note">Not in the catalog yet. Looking up ISBN '+esc(k)+' on Open Library…</p>';
+      else if(st.state==='found')html='<h3 class="rh">Found online</h3><div class="fcard"><button type="button" class="frow" data-act="pick-isbn" data-isbn="'+esc(k)+'"><span class="ft"><b>'+esc(st.data.title)+'</b><span class="note">'+esc(st.data.author||'')+'</span><span class="note">'+esc([st.data.publisher,st.data.releaseDate].filter(Boolean).join(' · '))+'</span></span><span class="btn small primary">Add this</span></button></div>';
+      else html='<p class="note">'+(st.state==='none'?'Open Library does not know ISBN '+esc(k)+'.':'Could not reach Open Library.')+' You can enter the book by hand and keep the ISBN.</p>';
+    }
+    el.innerHTML=html;return;
+  }
+  var hits=list(S.works).map(function(w){return {w:w,s:queryScore(q,w)}}).filter(function(x){return x.s>0}).sort(function(a,b){return b.s-a.s||a.w.title.localeCompare(b.w.title)});
+  html=hits.length?'<h3 class="rh">In the catalog</h3>'+hits.slice(0,12).map(function(x){return workCard(x.w)}).join(''):'<p class="note">Nothing in the catalog matches “'+esc(q)+'” yet.</p>';
+  if(S.find.olState==='loading')html+='<p class="note">Searching Open Library…</p>';
+  else if(S.find.olState==='error')html+='<p class="note">Could not reach Open Library. You can still enter the book by hand.</p>';
+  else if(S.find.olState==='done'){
+    var docs=S.find.ol||[], shown=[], hidden=0;
+    docs.forEach(function(d,i){var dr=olDraft(d);if(nearWorks(dr,NEAR).length)hidden++;else shown.push([d,i])});
+    html+='<h3 class="rh">From Open Library</h3>'+(shown.length?shown.slice(0,10).map(function(p){
+      var d=p[0],dr=olDraft(d);
+      return '<div class="fcard"><button type="button" class="frow" data-pick-ol="'+p[1]+'"><span class="thumb">'+(d.cover_i?'<img src="'+olCoverUrl(d.cover_i,'M')+'" alt="" loading="lazy" referrerpolicy="no-referrer">':'')+'</span><span class="ft"><b>'+esc(d.title)+'</b><span class="note">'+esc(dr.author)+'</span><span class="note">'+esc(dr.releaseDate)+'</span></span></button></div>';
+    }).join(''):'<p class="note">No new results.</p>')+(hidden?'<p class="note">'+hidden+' result'+(hidden===1?' is':'s are')+' already in your catalog and hidden here.</p>':'');
+  } else html+='<div class="actions" style="margin-top:12px"><button type="button" class="btn" data-act="find-online">Search Open Library for “'+esc(q)+'”</button></div>';
+  el.innerHTML=html;
+}
+async function lookupIsbnFlow(k){
+  try{var d=await lookupIsbnOL(k);S.find.isbn[k]=d?{state:'found',data:d}:{state:'none'}}
+  catch(e){S.find.isbn[k]={state:'error'}}
+  renderFind();
+}
+async function findOnline(){
+  var q=S.find.q.trim();if(!q)return;
+  S.find.olState='loading';S.find.olQ=q;renderFind();
+  try{var docs=await searchOL(q);if(S.find.olQ!==q)return;S.find.ol=docs;S.find.olState='done'}
+  catch(e){if(S.find.olQ!==q)return;S.find.olState='error'}
+  renderFind();
+}
+function findModal(){
+  S.modal={mode:'find'};S.find={q:'',open:'',ol:null,olState:'',olQ:'',isbn:{}};
+  $('#sheet').innerHTML='<button type="button" class="x" data-act="close" aria-label="Close">×</button><h2 id="mtitle">Add a book</h2>'+
+    '<p class="note">Search first, so your copy is linked to the book that is already in the catalog instead of creating a second version. Type a title, an author or an ISBN.</p>'+
+    '<div class="findbar"><label class="sr" for="find-q">Title, author or ISBN</label><input id="find-q" type="search" placeholder="Title, author or ISBN" autocomplete="off">'+(scanSupported()?'<button type="button" class="btn" data-act="scan">Scan barcode</button>':'')+'</div>'+
+    '<div id="find-results"></div>'+
+    '<div class="actions"><button type="button" class="btn" data-act="manual">Not listed? Enter it by hand</button><span class="push"></span><button type="button" class="btn" data-act="cancel">Cancel</button></div>';
+  openModal();renderFind();
+}
+var scanState=null;
+async function startScan(){
+  var ov=document.createElement('div');ov.className='scan';ov.id='scan';
+  ov.innerHTML='<video playsinline muted></video><p>Point the camera at the barcode on the back cover.</p><button type="button" class="btn" data-act="scan-stop">Cancel</button>';
+  document.body.appendChild(ov);
+  try{
+    var stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+    scanState={stream:stream,stop:false};
+    var v=ov.querySelector('video');v.srcObject=stream;await v.play();
+    var det=new BarcodeDetector({formats:['ean_13','ean_8','upc_a']}), st=scanState;
+    (async function loop(){
+      while(scanState===st&&!st.stop){
+        try{
+          var found=(await det.detect(v)).map(function(x){return cleanIsbn(x.rawValue)}).filter(function(x){return validIsbn(x)&&/^97[89]|^\d{9}[\dX]$/.test(x)})[0];
+          if(found){stopScan();var i=$('#find-q');if(i){i.value=found;S.find.q=found;renderFind()}return}
+        }catch(e){}
+        await new Promise(function(r){setTimeout(r,250)});
+      }
+    })();
+  }catch(e){stopScan();toast('Could not open the camera. You can type the ISBN instead.')}
+}
+function stopScan(){
+  if(scanState){scanState.stop=true;scanState.stream.getTracks().forEach(function(t){t.stop()});scanState=null}
+  var o=$('#scan');if(o)o.remove();
+}
+
+/* ----- a book's page, the catalog tab, and the duplicate finder ----- */
+function workModal(wid){
+  var w=S.works[wid];if(!w)return;
+  S.modal={mode:'work',workId:wid,id:null};
+  var eds=editionsOf(wid), others=list(S.works).filter(function(x){return x.id!==wid}).sort(function(a,b){return a.title.localeCompare(b.title)});
+  var edHtml=eds.length?eds.map(function(e){
+    var n=copiesOf(e.id).length;
+    return '<div class="edrow"><div class="thumb">'+coverHTML(Object.assign({},w,e))+'</div><div class="ft"><b>'+esc(edLabel(e))+'</b><span class="note">'+(n?'You have '+n+(n===1?' copy':' copies'):'Not in your collection')+'</span></div><button type="button" class="btn small" data-add-ed="'+esc(e.id)+'">Add a copy</button></div>';
+  }).join(''):'<p class="note">No editions are in your collection right now.</p>';
+  $('#sheet').innerHTML='<button type="button" class="x" data-act="close" aria-label="Close">×</button><h2 id="mtitle">'+esc(nameOf(w))+'</h2>'+
+    '<div class="note">'+esc([w.author,w.subtitle].filter(Boolean).join(' · '))+'</div>'+
+    '<h3 class="rh">Editions</h3><div class="edlist">'+edHtml+'</div>'+reviewsHTML(wid)+
+    (others.length?'<section class="rvbox"><h3>Same book as another entry?</h3><p class="note">Merge them so editions and reviews are shared. This entry is folded into the one you pick.</p><div class="mergerow"><label class="sr" for="merge-to">Merge into</label><select id="merge-to">'+others.map(function(o){return '<option value="'+esc(o.id)+'"'+(S.mergeTo===o.id?' selected':'')+'>'+esc(nameOf(o)+(o.author?' — '+o.author:''))+'</option>'}).join('')+'</select><button type="button" class="btn small'+(S.confirm==='merge'?' danger armed':'')+'" data-act="merge-work">'+(S.confirm==='merge'?'Confirm merge':'Merge')+'</button></div></section>':'');
+  openModal();
+}
+function renderCatalog(el){
+  var q=S.q.trim(), all=list(S.works);
+  var ws=all.map(function(w){return {w:w,s:q?queryScore(q,w):1}}).filter(function(x){return x.s>0}).sort(function(a,b){return b.s-a.s||a.w.title.localeCompare(b.w.title)||cmpNum(num(a.w.issue),num(b.w.issue))});
+  var nd=findDupes().length;
+  var head='<div class="head"><h2>Catalog</h2><span class="meta">'+(q?ws.length+' of ':'')+all.length+(all.length===1?' book':' books')+' · every edition of a book shares one page and one set of reviews</span><div class="acts"><button type="button" class="btn small" data-act="dupes">Find duplicates'+(nd?' ('+nd+')':'')+'</button></div></div>';
+  if(!all.length){el.innerHTML=head+'<div class="empty"><h3>The catalog is empty</h3><p>Books you add appear here, with their editions and reviews.</p><div class="acts"><button type="button" class="btn primary" data-act="add">Add a book</button></div></div>';return}
+  if(!ws.length){el.innerHTML=head+'<div class="empty"><h3>No matches</h3><p>Nothing in the catalog fits that search.</p></div>';return}
+  el.innerHTML=head+'<div class="catlist">'+ws.map(function(x){
+    var w=x.w, own=workCopies(w.id);
+    return '<button type="button" class="catrow" data-work="'+esc(w.id)+'">'+thumbFor(w)+'<span class="ft"><b>'+esc(nameOf(w))+'</b><span class="note">'+esc(w.author||'No author')+'</span><span class="note">'+esc(metaFor(w))+'</span></span>'+
+      (own.length?'<span class="pill'+(own.some(function(c){return c.status!=='wish'})?' good':'')+'">'+(own.some(function(c){return c.status!=='wish'})?'In collection':'Wishlist')+'</span>':'')+'</button>';
+  }).join('')+'</div>';
+}
+function dupesModal(){
+  S.modal={mode:'dupes',id:null};
+  var ds=findDupes();
+  function card(w){return '<div class="dcard">'+thumbFor(w)+'<span class="ft"><b>'+esc(nameOf(w))+'</b><span class="note">'+esc(w.author||'No author')+'</span><span class="note">'+esc(metaFor(w))+'</span></span></div>'}
+  var html=ds.length?ds.map(function(d){
+    if(d.type==='work'){
+      var a=S.works[d.a],b=S.works[d.b];
+      return '<div class="dpair"><div class="note">These look like the same book ('+Math.round(d.score*100)+'% alike)</div><div class="dcols">'+card(a)+card(b)+'</div><div class="chips"><button type="button" class="btn small" data-merge="work:'+esc(d.a)+':'+esc(d.b)+'">Keep left, merge right into it</button><button type="button" class="btn small" data-merge="work:'+esc(d.b)+':'+esc(d.a)+'">Keep right, merge left into it</button><button type="button" class="btn small" data-ignore="'+esc(dupeKey(d.a,d.b))+'">Not the same</button></div></div>';
+    }
+    var ea=S.editions[d.a],eb=S.editions[d.b],w=S.works[ea.workId];
+    return '<div class="dpair"><div class="note">Two editions of '+esc(nameOf(w))+' look identical</div><ul class="elist"><li>'+esc(edLabel(ea))+'</li><li>'+esc(edLabel(eb))+'</li></ul><div class="chips"><button type="button" class="btn small" data-merge="edition:'+esc(d.a)+':'+esc(d.b)+'">Merge into one edition</button><button type="button" class="btn small" data-ignore="'+esc(dupeKey(d.a,d.b))+'">Not the same</button></div></div>';
+  }).join(''):'<p class="note">No likely duplicates. Entries that are clearly the same book are linked automatically when you add or import them.</p>';
+  $('#sheet').innerHTML='<button type="button" class="x" data-act="close" aria-label="Close">×</button><h2 id="mtitle">Possible duplicates</h2>'+html+'<div class="actions"><span class="push"></span><button type="button" class="btn" data-act="cancel">Done</button></div>';
+  openModal();
+}
+
+/* Save a new shelf order. newIds is the visible books in their new order. */
+function commitReorder(newIds){
+  var key=S.folder;
+  var scope=list(S.comics).filter(function(c){return isBook(c)&&(key==='all'||(c.folderIds||[]).indexOf(key)>-1)});
+  var base=scope.sort(sorterFor(S.sort,key)).map(function(c){return c.id});
+  var set={};newIds.forEach(function(id){set[id]=1});
+  var slots=[];base.forEach(function(id,i){if(set[id])slots.push(i)});
+  slots.forEach(function(pos,k){base[pos]=newIds[k]});
+  S.sort='manual';saveUI();
+  if(key==='all')putView('all',{order:base});
+  else putFolder(Object.assign({},S.folders[key],{order:base,sort:'manual'}));
+  toast('Saved as your shelf order');
+}
+
+/* ---------- rendering ---------- */
+var PALETTE=['#c0392b','#e67e22','#d4a017','#7a8f1e','#2e8b57','#1f9d9d','#2d6aa3','#3f4fd1','#7b4fb8','#b8398a','#6b5b4b','#3b3f4a'];
+function validHex(s){return /^#[0-9a-f]{6}$/i.test(s||'')}
+function lum(hex){
+  var n=parseInt(hex.slice(1),16),f=function(v){v/=255;return v<=.03928?v/12.92:Math.pow((v+.055)/1.055,2.4)};
+  return .2126*f(n>>16&255)+.7152*f(n>>8&255)+.0722*f(n&255);
+}
+/* Each book gets a chosen color, or one drawn from its title so a series looks alike. */
+function colorVars(c){
+  if(validHex(c.color)){
+    var light=lum(c.color)>0.18, fg=light?'#14161e':'#fff';
+    return {spine:'--c:'+c.color+';--fg:'+fg,
+      cover:'--c1:'+c.color+';--c2:color-mix(in srgb,'+c.color+' '+(light?'82%,#fff':'55%,#000')+');--fg:'+fg};
+  }
+  var h=hue(c.title), iv=num(c.issue), l=32+(isFinite(iv)?Math.round(iv)%4:0)*3;
+  return {spine:'--c:hsl('+h+' 52% '+l+'%)',cover:'--c1:hsl('+h+' 60% 46%);--c2:hsl('+((h+40)%360)+' 55% 24%)'};
+}
+function coverHTML(c){
+  var src=c.cover||c.coverUrl;
+  var inner='<div class="cv-in"><div class="cv-t">'+esc(c.title)+'</div>'+(c.issue?'<div class="cv-i">Vol. '+esc(c.issue)+'</div>':'<div></div>')+'<div class="cv-p">'+esc(c.publisher||'')+'</div></div>'+
+    (src?'<img src="'+esc(src)+'" alt="" referrerpolicy="no-referrer">':'');
+  return '<div class="cover" style="'+colorVars(c).cover+'">'+inner+'</div>';
+}
+function spineHTML(c){
+  var f=FORMATS[c.format]||FORMATS.trade, hc=c.binding==='hardcover', photo=!!c.spineImg;
+  var w=f.w+(hc?6:0), ht=f.h+(hc?8:0);
+  var tip=nameOf(c)+(c.subtitle?' ('+c.subtitle+')':'')+(c.author?' by '+c.author:'');
+  var bg=photo?";background-image:url('"+esc(c.spineImg)+"')":'';
+  return '<button type="button" class="spine'+(hc?' hc':'')+(photo?' photo':'')+'" data-open="'+esc(c.id)+'" title="'+esc(tip)+'" aria-label="'+esc(tip)+'" style="'+colorVars(c).spine+';--w:'+w+'px;--ht:'+ht+'px'+bg+'"><span>'+esc(nameOf(c))+'</span></button>';
+}
+function renderTop(){
+  var books=list(S.comics).filter(isBook);
+  var own=books.filter(function(c){return c.status!=='wish'}), wish=books.length-own.length;
+  var series={};own.forEach(function(c){series[c.title]=1});
+  $('#stats').innerHTML=[[own.length,'Owned'],[wish,'Wishlist'],[Object.keys(series).length,'Titles'],[Object.keys(S.folders).length,'Folders']]
+    .map(function(s){return '<li><b>'+s[0]+'</b><span>'+s[1]+'</span></li>'}).join('');
+  var sy=$('#sync');
+  sy.textContent=saveFailed?'Not saving. Download a backup.':(S.mode==='idb'||S.mode==='local'?'Saved in this browser':'Comic collection tracker');
+  sy.classList.toggle('warn',saveFailed);
+  $$('[data-tab]').forEach(function(b){b.setAttribute('aria-pressed',String(b.dataset.tab===S.tab))});
+  $$('[data-view]').forEach(function(b){b.setAttribute('aria-pressed',String(b.dataset.view===S.view))});
+}
+function renderFolders(){
+  var tabItems=list(S.comics).filter(function(c){return isBook(c)&&inTab(c)});
+  var fl=list(S.folders).sort(function(a,b){return (a.created||0)-(b.created||0)});
+  var html='<button type="button" class="fbtn" data-folder="all" aria-current="'+(S.folder==='all')+'"><span class="nm">All books</span><span class="n">'+tabItems.length+'</span></button>';
+  fl.forEach(function(f){
+    var n=tabItems.filter(function(c){return (c.folderIds||[]).indexOf(f.id)>-1}).length;
+    html+='<button type="button" class="fbtn" data-folder="'+esc(f.id)+'" aria-current="'+(S.folder===f.id)+'"><span class="nm">'+esc(f.name)+'</span><span class="n">'+n+'</span></button>';
+  });
+  $('#folders').innerHTML=html;
+  $('#newfolder').innerHTML=S.addingFolder?
+    '<form class="inline-form" data-form="newfolder"><label class="sr" for="nf-name">Folder name</label><input id="nf-name" placeholder="Folder name" maxlength="40" autocomplete="off"><button class="btn small primary" type="submit">Add</button></form>':
+    '<button type="button" class="addf" data-act="new-folder">+ New folder</button>';
+  if(S.addingFolder){var i=$('#nf-name');if(i)i.focus()}
+}
+function renderTools(){
+  $('.tools').classList.toggle('cat',S.tab==='catalog');
+  $('#q').placeholder=S.tab==='catalog'?'Search the catalog by title or author':'Search title, author, publisher, ISBN or notes';
+  var sortSel=$('#sort');
+  sortSel.innerHTML=SORTS.map(function(s){return '<option value="'+s[0]+'">'+s[1]+'</option>'}).join('');
+  sortSel.value=S.sort;
+  var pubs={},auths={};
+  scoped().forEach(function(c){if(c.publisher)pubs[c.publisher]=1;authorsOf(c).forEach(function(a){auths[a]=1})});
+  if(S.pub&&!pubs[S.pub])S.pub='';
+  if(S.author&&!auths[S.author])S.author='';
+  $('#pub').innerHTML='<option value="">All publishers</option>'+Object.keys(pubs).sort().map(function(p){return '<option>'+esc(p)+'</option>'}).join('');
+  $('#pub').value=S.pub;
+  $('#author').innerHTML='<option value="">All authors</option>'+Object.keys(auths).sort(function(a,b){return a.localeCompare(b)}).map(function(p){return '<option>'+esc(p)+'</option>'}).join('');
+  $('#author').value=S.author;
+  $('#fmt').innerHTML='<option value="">All formats</option>'+Object.keys(FORMATS).map(function(k){return '<option value="'+k+'">'+FORMATS[k].label+'</option>'}).join('');
+  $('#fmt').value=S.fmt;
+  $('#bind').innerHTML='<option value="">Hardcover and paperback</option>'+Object.keys(BINDINGS).map(function(k){return '<option value="'+k+'">'+BINDINGS[k]+' only</option>'}).join('');
+  $('#bind').value=S.bind;
+  $('#readf').value=S.read;
+  $('#readf').hidden=S.tab!=='own';
+}
+function headHTML(items,total){
+  var f=S.folders[S.folder], title=S.folder==='all'?(S.tab==='wish'?'Wishlist':'All books'):(f?f.name:'All books');
+  var meta=items.length===total?total+' '+(total===1?'book':'books'):items.length+' of '+total+' books';
+  var sortName=SORTS.filter(function(s){return s[0]===S.sort})[0][1].toLowerCase();
+  var acts='';
+  if(f){
+    acts=S.renaming?'':'<button type="button" class="btn small" data-act="rename-folder">Rename</button><button type="button" class="btn small danger'+(S.confirm==='del-folder'?' armed':'')+'" data-act="del-folder">'+(S.confirm==='del-folder'?'Confirm delete folder':'Delete folder')+'</button>';
+  }
+  var h=S.renaming&&f?'<form class="inline-form" data-form="rename"><label class="sr" for="rn-name">Folder name</label><input id="rn-name" value="'+esc(f.name)+'" maxlength="40"><button class="btn small primary" type="submit">Save</button></form>':'<h2>'+esc(title)+'</h2>';
+  return '<div class="head">'+h+'<span class="meta">'+meta+' · sorted by '+esc(sortName)+'</span><div class="acts">'+acts+'</div></div>';
+}
+function renderContent(){
+  var el=$('#content');
+  if(!S.loaded){
+    el.innerHTML='<div class="empty"><h3>Loading your collection</h3><p>One moment.</p></div>';
+    return;
+  }
+  if(S.tab==='catalog'){renderCatalog(el);return}
+  var all=list(S.comics), books=all.filter(isBook), sc=scoped(), items=visible(), banner='';
+  var hidden=all.length-books.length;
+  var tail=hidden?'<p class="note">'+hidden+' single '+(hidden===1?'issue is':'issues are')+' hidden for now. They will come back once single-issue boxes are built.</p>':'';
+  if(books.some(function(c){return c.example})){
+    var moreEx=EX_COMICS.some(function(r,i){return !S.comics['ex-c'+i]});
+    banner='<div class="banner"><span>These are example books so you can try the shelf. Their details are illustrative.</span><span class="chips">'+(moreEx?'<button type="button" class="btn small" data-act="load-examples">Add more examples</button>':'')+'<button type="button" class="btn small" data-act="clear-examples">Remove examples</button></span></div>';
+  }
+  if(!books.length){
+    el.innerHTML='<div class="empty"><h3>Your longbox is empty</h3><p>Add the books you own, keep a wishlist of the ones you want, and group them into folders like Batman or Image. Drag spines on the shelf to arrange them your way.</p><div class="acts"><button type="button" class="btn primary" data-act="add">Add your first book</button><button type="button" class="btn" data-act="load-examples">Load '+EX_COMICS.length+' example books</button></div></div>'+tail;
+    return;
+  }
+  var head=headHTML(items,sc.length);
+  if(!sc.length){
+    var msg=S.tab==='wish'?'Nothing on your wishlist yet. Use Add book and set the status to Wishlist.':(S.folder==='all'?'No books here yet.':'This folder is empty. Open any book, choose Edit, and tick this folder.');
+    el.innerHTML=banner+head+'<div class="empty"><h3>Nothing here yet</h3><p>'+msg+'</p><div class="acts"><button type="button" class="btn primary" data-act="add">Add book</button></div></div>'+tail;
+    return;
+  }
+  if(!items.length){
+    el.innerHTML=banner+head+'<div class="empty"><h3>No matches</h3><p>No books fit the current search and filters.</p><div class="acts"><button type="button" class="btn" data-act="clear-filters">Clear filters</button></div></div>'+tail;
+    return;
+  }
+  var body='';
+  if(S.view==='shelf'){
+    var w=el.clientWidth||900; lastW=w;
+    var avail=w-38, rows=[[]], used=0;
+    items.forEach(function(c){
+      var sw=(FORMATS[c.format]||FORMATS.trade).w+(c.binding==='hardcover'?6:0)+2;
+      if(used+sw>avail&&rows[rows.length-1].length){rows.push([]);used=0}
+      rows[rows.length-1].push(c);used+=sw;
+    });
+    body='<div class="shelf">'+rows.map(function(r){return '<div class="row">'+r.map(spineHTML).join('')+'</div><div class="plank"></div>'}).join('')+'</div>'+
+      '<p class="legend">Drag a spine left or right to rearrange the shelf (on a touch screen, press and hold first). When the shelf has several rows, move the pointer up or down to send a book to another row. With a spine focused, Alt and the left or right arrow also moves it. Thicker spines are omnibuses and compendiums, and hardcovers have banded spines.</p>';
+  } else if(S.view==='grid'){
+    body='<div class="grid">'+items.map(function(c){
+      var got=S.tab==='wish'?'<button type="button" class="btn small" data-got="'+esc(c.id)+'">Got it</button>':'';
+      return '<div class="cardwrap"><button type="button" class="card" data-open="'+esc(c.id)+'">'+coverHTML(c)+'<span class="t">'+esc(nameOf(c))+'</span>'+(c.author?'<span class="s">'+esc(c.author)+'</span>':'')+'<span class="s mono">'+esc(fmtDate(c.releaseDate)||'No date')+'</span></button>'+got+'</div>';
+    }).join('')+'</div>';
+  } else {
+    body='<div class="tablewrap"><table><thead><tr><th>Title</th><th>Author</th><th>Released</th><th>Order</th><th class="col-opt">Publisher</th><th class="col-opt">Format</th><th class="col-opt">Cond.</th>'+(S.tab==='own'?'<th>Read</th>':'<th></th>')+'</tr></thead><tbody>'+
+      items.map(function(c){
+        return '<tr data-open="'+esc(c.id)+'" tabindex="0"><td class="ttl">'+esc(nameOf(c))+(c.subtitle?'<small>'+esc(c.subtitle)+'</small>':'')+'</td><td class="au">'+esc(c.author||'')+'</td><td class="mono">'+esc(fmtDate(c.releaseDate))+'</td><td class="mono">'+(c.readOrder==null||c.readOrder===''?'':esc(c.readOrder))+'</td><td class="col-opt">'+esc(c.publisher||'')+'</td><td class="col-opt">'+esc(fmtLabel(c))+'</td><td class="col-opt mono">'+esc(c.condition||'')+'</td><td>'+(S.tab==='own'?(c.read?'<span class="pill good">Read</span>':'<span class="pill">Unread</span>'):'<button type="button" class="btn small" data-got="'+esc(c.id)+'">Got it</button>')+'</td></tr>';
+      }).join('')+'</tbody></table></div>';
+  }
+  el.innerHTML=banner+head+body+tail;
+  if(S.renaming){var r=$('#rn-name');if(r){r.focus();r.select()}}
+}
+function render(){renderTop();renderFolders();renderTools();renderContent()}
+
+/* ---------- modal ---------- */
+function openModal(){lastFocus=document.activeElement;$('#modal').hidden=false;document.body.style.overflow='hidden';var f=$('#sheet').querySelector('input:not([type=file]),button.btn');if(f)f.focus()}
+function closeModal(){stopScan();$('#modal').hidden=true;document.body.style.overflow='';S.modal=null;S.confirm='';draftCover='';draftCoverUrl='';draftCoverColor='';draftSpine='';if(lastFocus&&lastFocus.focus&&document.contains(lastFocus))lastFocus.focus()}
+function viewModal(id){
+  var c=S.comics[id]; if(!c)return;
+  S.modal={id:id,mode:'view'};
+  var fl=(c.folderIds||[]).map(function(x){return S.folders[x]}).filter(Boolean).map(function(f){return '<span class="chip">'+esc(f.name)+'</span>'}).join('');
+  var rows=[['Author',esc(c.author||'')],['Publisher',esc(c.publisher||'')],['Released',esc(fmtDate(c.releaseDate))],['ISBN',esc(c.isbn||'')],['Format',esc(fmtLabel(c))],
+    ['Condition',c.condition?esc(CONDS[c.condition]+' ('+c.condition+')'):''],['Reading order',c.readOrder==null||c.readOrder===''?'':esc(c.readOrder)],
+    ['Folders',fl?'<div class="chips">'+fl+'</div>':''],['Notes',esc(c.notes||'')]].filter(function(r){return r[1]});
+  var wish=c.status==='wish';
+  $('#sheet').innerHTML='<button type="button" class="x" data-act="close" aria-label="Close">×</button>'+
+    '<h2 id="mtitle">'+esc(nameOf(c))+'</h2>'+(c.subtitle?'<div class="note">'+esc(c.subtitle)+'</div>':'')+
+    '<div class="detail">'+coverHTML(c)+'<div><div class="chips"><span class="chip">'+(wish?'On wishlist':(c.read?'Read':'Unread'))+'</span></div>'+
+    '<dl>'+rows.map(function(r){return '<dt>'+r[0]+'</dt><dd>'+r[1]+'</dd>'}).join('')+'</dl></div></div>'+
+    reviewsHTML(c.workId)+
+    '<div class="actions">'+(wish?'<button type="button" class="btn primary" data-got="'+esc(id)+'">Got it, move to collection</button>':'<button type="button" class="btn" data-act="toggle-read">'+(c.read?'Mark as unread':'Mark as read')+'</button>')+
+    '<button type="button" class="btn" data-act="edit">Edit</button><span class="push"></span>'+
+    '<button type="button" class="btn danger'+(S.confirm==='del-comic'?' armed':'')+'" data-act="del-comic">'+(S.confirm==='del-comic'?'Confirm delete':'Delete')+'</button></div>';
+  openModal();
+}
+/* the catalog records this form is tied to, when the book was picked from the catalog */
+function boundData(){
+  var b=S.modal&&S.modal.bind;if(!b)return null;
+  var e=b.editionId?S.editions[b.editionId]:null, w=e?S.works[e.workId]:S.works[b.workId];
+  return w?{w:w,e:e}:null;
+}
+var FV={'f-title':'title','f-issue':'issue','f-subtitle':'subtitle','f-author':'author','f-isbn':'isbn','f-pub':'publisher','f-release':'releaseDate'};
+/* a form value, or the catalog value when that field is not shown because the book is linked */
+function fv(id){
+  var el=$('#'+id);if(el)return el.value;
+  var b=boundData();if(!b)return '';
+  var k=FV[id], v=b.w[k]!==undefined?b.w[k]:(b.e?b.e[k]:'');
+  return v||'';
+}
+function catalogCard(bd){
+  var o=Object.assign({},bd.w,bd.e||{});
+  return '<div class="full lockcard"><div class="lc-cover">'+coverHTML(o)+'</div><div class="lc-body"><b>'+esc(nameOf(bd.w))+'</b><div class="note">'+esc(bd.w.author||'')+'</div>'+
+    '<div class="note">'+esc(bd.e?edLabel(bd.e):'A new edition of this book')+'</div>'+
+    '<div class="note">Linked to the catalog, so its details and reviews are shared with every copy.</div>'+
+    '<button type="button" class="btn small" data-act="change-book">Choose a different book</button></div></div>';
+}
+function editModal(id,opts){
+  opts=opts||{};
+  var c=id?S.comics[id]:null;
+  S.modal={id:id||null,mode:'edit',bind:opts.bind||null,forceNew:false,another:false};
+  var bd=boundData();
+  var d=c||Object.assign({title:'',issue:'',subtitle:'',author:'',publisher:'',releaseDate:'',readOrder:'',format:'trade',binding:'paperback',condition:'',read:false,folderIds:S.folder!=='all'?[S.folder]:[],notes:'',cover:'',isbn:'',status:S.tab==='wish'?'wish':'own'},opts.prefill||{});
+  if(bd&&!c){W_FIELDS.forEach(function(k){d[k]=bd.w[k]||''});if(bd.e)E_FIELDS.forEach(function(k){d[k]=bd.e[k]||''})}
+  draftCover=d.cover||'';draftCoverUrl=d.coverUrl||'';draftCoverColor=d.coverColor||'';draftSpine=d.spineImg||'';
+  draftColor=validHex(d.color)?d.color:'';draftColorSrc=draftColor?(d.colorSource||'user'):'';
+  var fl=list(S.folders).sort(function(a,b){return (a.created||0)-(b.created||0)});
+  var pubs=['Marvel','DC Comics','Image Comics','Dark Horse','IDW Publishing','BOOM! Studios','Vertigo','Fantagraphics','Pantheon'];
+  var seen={};list(S.works).forEach(function(x){authorsOf(x).forEach(function(a){seen[a]=1})});
+  var lockWork=!!bd, lockEd=!!(bd&&bd.e);
+  var workPart=lockWork?catalogCard(bd):(
+    '<label class="f full">Title<input id="f-title" value="'+esc(d.title)+'" placeholder="Batman: Year One" required autocomplete="off"></label>'+
+    '<label class="f">Volume<input id="f-issue" value="'+esc(d.issue)+'" placeholder="1" autocomplete="off"></label>'+
+    '<label class="f">Subtitle<input id="f-subtitle" value="'+esc(d.subtitle||'')+'" placeholder="Preludes and Nocturnes" autocomplete="off"></label>'+
+    '<label class="f full">Author<input id="f-author" value="'+esc(d.author||'')+'" list="authors" placeholder="Frank Miller, David Mazzucchelli" autocomplete="off"><span class="note">Separate several authors with commas. Each one can be used as a filter.</span></label>'+
+    '<datalist id="authors">'+Object.keys(seen).sort().map(function(a){return '<option value="'+esc(a)+'">'}).join('')+'</datalist>');
+  var edPart=lockEd?'':(
+    '<label class="f">ISBN<input id="f-isbn" value="'+esc(d.isbn||'')+'" placeholder="978-1401207526" inputmode="numeric" autocomplete="off"><span class="note">Used to find the cover online and to match other copies.</span></label>'+
+    '<label class="f">Publisher<input id="f-pub" value="'+esc(d.publisher||'')+'" list="pubs" autocomplete="off"></label>'+
+    '<datalist id="pubs">'+pubs.map(function(p){return '<option value="'+p+'">'}).join('')+'</datalist>'+
+    '<label class="f">Release date<input id="f-release" value="'+esc(d.releaseDate||'')+'" placeholder="1988 or 1988-03" inputmode="numeric" maxlength="7" autocomplete="off"></label>'+
+    '<label class="f">Format<select id="f-format">'+Object.keys(FORMATS).map(function(k){return '<option value="'+k+'"'+(d.format===k?' selected':'')+'>'+FORMATS[k].label+'</option>'}).join('')+'</select></label>'+
+    '<label class="f">Hardcover or paperback<select id="f-bind">'+Object.keys(BINDINGS).map(function(k){return '<option value="'+k+'"'+((d.binding||'paperback')===k?' selected':'')+'>'+BINDINGS[k]+'</option>'}).join('')+'</select></label>');
+  $('#sheet').innerHTML='<button type="button" class="x" data-act="close" aria-label="Close">×</button>'+
+    '<h2 id="mtitle">'+(c?'Edit book':'Add book')+'</h2>'+
+    '<form class="form" data-form="comic" novalidate>'+
+    (c?'<p class="note full">Changing the book or edition details here changes them for every copy and review that shares them.</p>':'')+
+    workPart+edPart+
+    '<label class="f">Condition<select id="f-cond"><option value="">Not graded</option>'+Object.keys(CONDS).map(function(k){return '<option value="'+k+'"'+(d.condition===k?' selected':'')+'>'+CONDS[k]+' ('+k+')</option>'}).join('')+'</select></label>'+
+    '<label class="f">Reading order<input id="f-order" type="number" step="any" value="'+(d.readOrder==null?'':esc(d.readOrder))+'" placeholder="Where it falls in story order"></label>'+
+    '<label class="f">Status<select id="f-status"><option value="own"'+(d.status!=='wish'?' selected':'')+'>In my collection</option><option value="wish"'+(d.status==='wish'?' selected':'')+'>On my wishlist</option></select></label>'+
+    '<div class="full"><div class="chips"><label class="chip"><input type="checkbox" id="f-read"'+(d.read?' checked':'')+'> I have read it</label></div></div>'+
+    '<div class="full"><div class="note" style="margin-bottom:6px">Folders</div><div class="chips">'+(fl.length?fl.map(function(f){return '<label class="chip"><input type="checkbox" name="folder" value="'+esc(f.id)+'"'+((d.folderIds||[]).indexOf(f.id)>-1?' checked':'')+'> '+esc(f.name)+'</label>'}).join(''):'<span class="note">No folders yet. Create one from the left rail, then tick it here.</span>')+'</div></div>'+
+    '<div class="full"><div class="note" style="margin-bottom:6px">Spine and cover color</div><div class="swatches" id="swatches" role="group" aria-label="Spine and cover color">'+
+      '<button type="button" class="sw auto" data-color="" aria-pressed="false">Automatic</button>'+
+      '<button type="button" class="sw auto" data-color="@cover" aria-pressed="false" id="sw-cover" hidden>From cover</button>'+
+      PALETTE.map(function(h){return '<button type="button" class="sw" data-color="'+h+'" style="background:'+h+'" aria-label="Color '+h+'" aria-pressed="false"></button>'}).join('')+
+      '<label class="sw custom" title="Pick any color"><input type="color" id="f-color-custom" value="'+(validHex(d.color)?d.color:'#3347e8')+'" aria-label="Pick a custom color"></label></div>'+
+      '<div class="chips" style="margin-top:8px"><label class="chip"><input type="checkbox" id="f-color-series"> Use this color for every book with this title</label></div></div>'+
+    '<label class="f full">Notes<textarea id="f-notes" rows="2" placeholder="Signed, variant cover, where you found it">'+esc(d.notes||'')+'</textarea></label>'+
+    '<div class="full coverbox"><div class="note" style="margin-bottom:6px">Cover</div><div class="coverrow"><div id="cover-prev"></div><div class="cvctl">'+
+      '<div class="drop" id="drop" tabindex="0">Drop an image here, or paste one with Ctrl or Cmd and V</div>'+
+      '<div class="cvbtns"><button type="button" class="btn small primary" data-act="fetch-cover">Find cover online</button>'+
+      '<label class="btn small" for="f-cover">Upload image</label><input id="f-cover" class="sr" type="file" accept="image/*">'+
+      '<a class="btn small" id="find-link" target="_blank" rel="noopener noreferrer" href="#">Search images</a>'+
+      '<button type="button" class="btn small" data-act="remove-cover">Remove cover</button></div>'+
+      '<div class="note" id="cv-status" role="status">Without an image, a cover is drawn from the title.</div></div></div>'+
+      '<div class="cands" id="cands"></div></div>'+
+    '<div class="full coverbox"><div class="note" style="margin-bottom:6px">Spine photo of your copy (optional)</div><div class="coverrow"><div id="spine-prev"></div><div class="cvctl">'+
+      '<div class="drop" id="spine-drop" tabindex="0">Drop a photo of the spine here</div>'+
+      '<div class="cvbtns"><label class="btn small" for="f-spine">Upload spine photo</label><input id="f-spine" class="sr" type="file" accept="image/*">'+
+      '<button type="button" class="btn small" data-act="remove-spine">Remove</button></div>'+
+      '<div class="note">Shown on the shelf in place of the colored spine.</div></div></div></div>'+
+    '<div class="full" id="dupe"></div>'+
+    '<p class="err full" id="f-err" role="alert"></p>'+
+    '<div class="actions full" style="margin-top:0"><button type="submit" class="btn primary">Save</button>'+(c?'':'<button type="button" class="btn" data-act="save-another">Save and add another</button>')+'<button type="button" class="btn" data-act="cancel">Cancel</button></div>'+
+    '</form>';
+  syncSwatches();refreshCoverPrev();
+  openModal();
+  if(opts.olCoverId)pickCandidate(opts.olCoverId);else if(opts.autoIsbn)findCoverOnline();
+}
+function readForm(){
+  var g=function(id){return fv(id).trim()}, err=$('#f-err'), bd=boundData(), eb=(bd&&bd.e)||{};
+  var title=g('f-title');
+  if(!title){err.textContent='Enter a title for this book.';var t=$('#f-title');if(t)t.focus();return null}
+  var rel=g('f-release');
+  if($('#f-release')&&rel&&!/^\d{4}(-(0[1-9]|1[0-2]))?$/.test(rel)){err.textContent='Enter the release date as a year (1988) or year and month (1988-03).';$('#f-release').focus();return null}
+  var ibRaw=g('f-isbn'), ib=cleanIsbn(ibRaw);
+  if($('#f-isbn')&&ibRaw&&!validIsbn(ib)){err.textContent='An ISBN has 10 or 13 digits. Leave it blank if the book has none.';$('#f-isbn').focus();return null}
+  var ord=$('#f-order').value.trim();
+  return {title:title,issue:g('f-issue'),subtitle:g('f-subtitle'),author:g('f-author'),publisher:g('f-pub'),releaseDate:rel,isbn:ib?isbn13(ib):'',
+    format:$('#f-format')?$('#f-format').value:(eb.format||'trade'),binding:$('#f-bind')?$('#f-bind').value:(eb.binding||'paperback'),
+    readOrder:ord===''?null:Number(ord),condition:$('#f-cond').value,status:$('#f-status').value,read:$('#f-read').checked,
+    folderIds:$$('input[name=folder]:checked').map(function(i){return i.value}),notes:$('#f-notes').value.trim(),
+    cover:draftCover||'',coverUrl:draftCover?'':(draftCoverUrl||''),coverColor:draftCoverColor||'',spineImg:draftSpine||'',
+    color:draftColor||'',colorSource:draftColor?(draftColorSrc||'user'):''};
+}
+function showDupes(near,another){
+  var box=$('#dupe');if(!box)return;
+  S.modal.another=!!another;
+  box.innerHTML='<div class="dupebox"><b>This looks like a book that is already in the catalog.</b><div class="dlist">'+near.map(function(x){
+    return '<div class="drow">'+thumbFor(x.work)+'<span class="ft"><b>'+esc(nameOf(x.work))+'</b><span class="note">'+esc(x.work.author||'No author')+' · '+esc(metaFor(x.work))+'</span></span><button type="button" class="btn small primary" data-use-work="'+esc(x.work.id)+'">Use this one</button></div>';
+  }).join('')+'</div><button type="button" class="btn small" data-act="force-new">No, it is a different book</button></div>';
+  box.scrollIntoView({block:'nearest'});
+}
+function saveForm(another){
+  var data=readForm(); if(!data)return;
+  var m=S.modal, id=m&&m.id, shared={}, pers={}, c;
+  Object.keys(data).forEach(function(k){(W_FIELDS.indexOf(k)>-1||E_FIELDS.indexOf(k)>-1?shared:pers)[k]=data[k]});
+  if(id){
+    c=Object.assign({},S.comics[id],pers);
+    var e0=S.editions[c.editionId], w0=e0&&S.works[e0.workId];
+    if(e0&&w0){W_FIELDS.forEach(function(k){w0[k]=shared[k]});E_FIELDS.forEach(function(k){e0[k]=shared[k]})}
+    else Object.assign(c,shared);
+  } else {
+    var b=m.bind, r;
+    if(b&&b.editionId){
+      var e1=S.editions[b.editionId];r={edition:e1,work:S.works[e1.workId]};
+      if(shared.cover||shared.coverUrl){e1.cover=shared.cover;e1.coverUrl=shared.coverUrl;e1.coverColor=shared.coverColor}
+    } else {
+      if(!b&&!m.forceNew&&!editionByIsbn(shared.isbn)&&!nearWorks(shared,SAME).length){
+        var near=nearWorks(shared,NEAR);
+        if(near.length){showDupes(near.slice(0,3),another);return}
+      }
+      r=resolveTarget(shared,{workId:b&&b.workId,forceNew:m.forceNew});
+    }
+    c=Object.assign({id:newId('c'),added:Date.now(),example:false},pers,{editionId:r.edition.id});
+  }
+  if(c.status==='wish')c.read=false;
+  var series=$('#f-color-series')&&$('#f-color-series').checked;
+  putComic(c);
+  if(series){
+    list(S.comics).filter(function(o){return o.id!==c.id&&o.title.toLowerCase()===c.title.toLowerCase()})
+      .forEach(function(o){putComic(Object.assign({},o,{color:c.color,colorSource:c.color?'user':''}))});
+  }
+  toast(id?'Saved changes':'Added '+nameOf(c));
+  if(another)findModal(); else closeModal();
+}
+function searchUrl(){
+  var q=[fv('f-title'),fv('f-issue')?'volume '+fv('f-issue'):'',(fv('f-author')||'').split(',')[0],'cover'].filter(function(x){return x&&x.trim()}).join(' ');
+  return 'https://www.google.com/search?tbm=isch&q='+encodeURIComponent(q);
+}
+function refreshCoverPrev(){
+  var p=$('#cover-prev');if(!p)return;
+  p.innerHTML=coverHTML({title:fv('f-title')||'Cover',issue:fv('f-issue'),publisher:fv('f-pub'),cover:draftCover,coverUrl:draftCoverUrl,color:draftColor});
+  var sp=$('#spine-prev');
+  if(sp)sp.innerHTML=draftSpine?'<div class="spine-ph" style="background-image:url(\''+esc(draftSpine)+'\')"></div>':'<div class="spine-ph empty">No photo</div>';
+  var fl=$('#find-link');if(fl)fl.href=searchUrl();
+}
+function cvStatus(msg){var e=$('#cv-status');if(e)e.textContent=msg}
+function setDraftCover(res){
+  draftCover=res.url||'';draftCoverUrl=res.url?'':(res.remote||'');draftCoverColor=res.color||'';
+  if(res.color&&(!draftColor||draftColorSrc==='cover')){draftColor=res.color;draftColorSrc='cover'}
+  if(!res.color&&draftColorSrc==='cover'){draftColor='';draftColorSrc=''}
+  syncSwatches();refreshCoverPrev();$('#cands').innerHTML='';
+}
+async function useCoverFile(file){
+  if(!file||!/^image\//.test(file.type)){cvStatus('That is not an image file.');return}
+  try{setDraftCover(await ingestCover(file));cvStatus('Cover added.')}catch(e){cvStatus(e.message||'Could not use that image.')}
+}
+async function useSpineFile(file){
+  if(!file||!/^image\//.test(file.type)){return}
+  try{draftSpine=await ingestSpine(file);refreshCoverPrev()}catch(e){toast(e.message||'Could not use that image.')}
+}
+async function findCoverOnline(){
+  var isbn=cleanIsbn(fv('f-isbn')), title=fv('f-title').trim();
+  if(!isbn&&!title){cvStatus('Enter a title or an ISBN first.');var t=$('#f-title');if(t)t.focus();return}
+  $('#cands').innerHTML='';
+  try{
+    if(isbn&&validIsbn(isbn)){
+      cvStatus('Looking up ISBN '+isbn+'…');
+      try{setDraftCover(await coverByIsbn(isbn));cvStatus('Found a cover for that ISBN.');return}
+      catch(e){if(navigator.onLine===false)throw e}
+    } else if(isbn){cvStatus('That ISBN should have 10 or 13 digits. Searching by title instead…')}
+    if(!title){cvStatus('No cover found for that ISBN. Add a title to search by name.');return}
+    cvStatus('Searching Open Library…');
+    var docs=await searchCovers(title,fv('f-author'));
+    if(!docs.length){cvStatus('No covers found. Try the ISBN, or use Search images and drop the picture here.');return}
+    cvStatus('Pick the edition that matches yours.');
+    $('#cands').innerHTML=docs.map(function(d){
+      return '<button type="button" class="cand" data-cand="'+d.cover_i+'" title="'+esc(d.title+(d.first_publish_year?' ('+d.first_publish_year+')':''))+'"><img src="'+olCoverUrl(d.cover_i,'M')+'" alt="" loading="lazy" referrerpolicy="no-referrer"><span>'+esc(d.title)+(d.first_publish_year?' · '+d.first_publish_year:'')+'</span></button>';
+    }).join('');
+  }catch(e){cvStatus(navigator.onLine===false?'You appear to be offline.':'Could not reach Open Library. Try again in a moment, or drop an image here.')}
+}
+
+async function pickCandidate(id){
+  cvStatus('Downloading cover…');
+  var u=olCoverUrl(id,'L');
+  try{setDraftCover(await coverFromUrl(u));cvStatus('Cover added.')}catch(e){cvStatus('Could not use that cover.')}
+}
+function syncSwatches(){
+  var onPreset=false;
+  $$('#swatches [data-color]').forEach(function(b){
+    var on=b.dataset.color==='@cover'?draftColorSrc==='cover':(draftColorSrc!=='cover'&&b.dataset.color.toLowerCase()===draftColor.toLowerCase());
+    if(on&&b.dataset.color&&b.dataset.color!=='@cover')onPreset=true;
+    b.setAttribute('aria-pressed',String(on));
+  });
+  var cu=$('#swatches .custom');
+  if(cu){cu.classList.toggle('on',!!draftColor&&!onPreset&&draftColorSrc!=='cover')}
+  var sc=$('#sw-cover');if(sc)sc.hidden=!draftCoverColor;
+}
+
+/* ---------- drag to reorder (shelf) ---------- */
+var drag=null, suppressClick=false;
+function dragStart(){
+  if(!drag||drag.active)return;
+  var shelf=$('.shelf'); if(!shelf){drag=null;return}
+  drag.active=true; clearTimeout(drag.timer);
+  drag.sy0=window.scrollY;
+  drag.rows=$$('.shelf .row');
+  drag.sr0=drag.el.getBoundingClientRect();
+  drag.ob=drag.el.parentNode.getBoundingClientRect().bottom;
+  drag.el.classList.add('dragging'); document.body.classList.add('is-dragging');
+  try{drag.el.setPointerCapture(drag.pid)}catch(e){}
+  var ind=document.createElement('div');ind.className='drop-ind';ind.hidden=true;shelf.appendChild(ind);drag.ind=ind;
+  requestAnimationFrame(dragTick);
+}
+function dragUpdate(){
+  /* The book only slides left and right, and always rests on a shelf. */
+  var sh=$('.shelf').getBoundingClientRect(), L=sh.left+18, R=sh.right-18, rows=drag.rows;
+  var ri=0,bd=Infinity;
+  rows.forEach(function(row,i){
+    var r=row.getBoundingClientRect(), top=r.top-14, bottom=r.bottom+34;
+    var dist=drag.py<top?top-drag.py:(drag.py>bottom?drag.py-bottom:0);
+    if(dist<bd){bd=dist;ri=i}
+  });
+  var rr=rows[ri].getBoundingClientRect();
+  var tx=Math.max(L-drag.sr0.left,Math.min(R-drag.sr0.right,drag.px-drag.x0));
+  var ty=rr.bottom-(drag.ob-(window.scrollY-drag.sy0))-8; /* stay at the same lifted height as the hover */
+  drag.el.style.transform='translate('+tx+'px,'+ty+'px)';
+  var pxc=Math.max(L,Math.min(R,drag.px));
+  var sps=$$('.spine',rows[ri]).filter(function(s){return s!==drag.el});
+  var tgt=null,after=false,tr=null;
+  for(var i=0;i<sps.length;i++){
+    var r2=sps[i].getBoundingClientRect();
+    if(pxc<r2.left+r2.width/2){tgt=sps[i];tr=r2;break}
+  }
+  if(!tgt&&sps.length){tgt=sps[sps.length-1];tr=tgt.getBoundingClientRect();after=true}
+  if(tgt){
+    drag.target=tgt.dataset.open; drag.before=!after;
+    drag.ind.hidden=false;
+    drag.ind.style.left=((after?tr.right+1:tr.left-2)-sh.left-1)+'px';
+    drag.ind.style.top=(rr.top-sh.top)+'px';
+    drag.ind.style.height=rr.height+'px';
+  } else {drag.target=null;drag.ind.hidden=true}
+}
+function dragTick(){
+  if(!drag||!drag.active)return;
+  var vh=window.innerHeight;
+  if(drag.py<70)window.scrollBy(0,-14); else if(drag.py>vh-70)window.scrollBy(0,14);
+  dragUpdate();
+  requestAnimationFrame(dragTick);
+}
+function dragEnd(commit){
+  var d=drag; drag=null; if(!d)return;
+  clearTimeout(d.timer);
+  if(!d.active)return;
+  d.el.classList.remove('dragging'); d.el.style.transform='';
+  if(d.ind&&d.ind.parentNode)d.ind.parentNode.removeChild(d.ind);
+  document.body.classList.remove('is-dragging');
+  suppressClick=true; setTimeout(function(){suppressClick=false},80);
+  if(commit&&d.target){
+    var ids=visible().map(function(c){return c.id}), before=ids.join();
+    ids=ids.filter(function(x){return x!==d.id});
+    var ti=ids.indexOf(d.target); if(ti<0)return;
+    ids.splice(d.before?ti:ti+1,0,d.id);
+    if(ids.join()!==before)commitReorder(ids);
+  }
+}
+document.addEventListener('pointerdown',function(e){
+  if(S.view!=='shelf'||e.button>0)return;
+  var sp=e.target.closest&&e.target.closest('.spine'); if(!sp)return;
+  drag={id:sp.dataset.open,el:sp,x0:e.clientX,y0:e.clientY,px:e.clientX,py:e.clientY,active:false,pid:e.pointerId,type:e.pointerType,timer:null,target:null,before:true};
+  if(e.pointerType!=='mouse')drag.timer=setTimeout(dragStart,320);
+});
+document.addEventListener('pointermove',function(e){
+  if(!drag)return;
+  drag.px=e.clientX;drag.py=e.clientY;
+  if(!drag.active){
+    var moved=Math.hypot(drag.px-drag.x0,drag.py-drag.y0);
+    if(drag.type==='mouse'){if(moved>6)dragStart()}
+    else if(moved>10){clearTimeout(drag.timer);drag=null}
+  }
+});
+document.addEventListener('pointerup',function(){dragEnd(true)});
+document.addEventListener('pointercancel',function(){dragEnd(false)});
+document.addEventListener('touchmove',function(e){if(drag&&drag.active&&e.cancelable)e.preventDefault()},{passive:false});
+document.addEventListener('click',function(e){if(suppressClick){e.stopPropagation();e.preventDefault();suppressClick=false}},true);
+
+/* ---------- events ---------- */
+document.addEventListener('click',function(e){
+  var t=e.target;
+  var el=t.closest('[data-tab],[data-view],[data-folder],[data-open],[data-got],[data-act],[data-color],[data-cand],[data-work],[data-fwork],[data-pick-ed],[data-pick-work],[data-pick-ol],[data-use-work],[data-add-ed],[data-star],[data-merge],[data-ignore]');
+  if(t.id==='modal'){closeModal();return}
+  if(!el)return;
+  var d=el.dataset;
+  if(d.color!==undefined){if(d.color==='@cover'){draftColor=draftCoverColor;draftColorSrc='cover'}else{draftColor=d.color;draftColorSrc=d.color?'user':''}syncSwatches();refreshCoverPrev();return}
+  if(d.cand){pickCandidate(d.cand);return}
+  if(d.fwork!==undefined){S.find.open=S.find.open===d.fwork?'':d.fwork;renderFind();return}
+  if(d.pickEd){editModal(null,{bind:{editionId:d.pickEd}});return}
+  if(d.pickWork){editModal(null,{bind:{workId:d.pickWork}});return}
+  if(d.pickOl!==undefined){var dr=olDraft(S.find.ol[+d.pickOl]);editModal(null,{prefill:dr,olCoverId:dr.coverId});return}
+  if(d.useWork){S.modal.bind={workId:d.useWork};saveForm(S.modal.another);return}
+  if(d.work){S.rv={editing:false,rating:0};S.confirm='';workModal(d.work);return}
+  if(d.addEd){editModal(null,{bind:{editionId:d.addEd}});return}
+  if(d.star){S.rv.rating=+d.star;$$('.star').forEach(function(b){b.setAttribute('aria-pressed',String(+b.dataset.star<=S.rv.rating))});return}
+  if(d.merge){var mp=d.merge.split(':');if(mp[0]==='work')mergeWorks(mp[1],mp[2]);else mergeEditions(mp[1],mp[2]);gcCatalog();persist();render();dupesModal();toast('Merged');return}
+  if(d.ignore){S.ignored.push(d.ignore);persist();dupesModal();return}
+  if(d.tab){S.tab=d.tab;S.confirm='';saveUI();render();return}
+  if(d.view){S.view=d.view;saveUI();render();return}
+  if(d.folder){
+    if(S.tab==='catalog'){S.tab='own';saveUI()}
+    S.folder=d.folder;S.renaming=false;S.confirm='';
+    var f=S.folders[d.folder];if(f&&f.sort){S.sort=f.sort;saveUI()}
+    render();return;
+  }
+  if(d.got){
+    var c=S.comics[d.got];if(c){c=Object.assign({},c,{status:'own'});putComic(c);toast('Moved '+nameOf(c)+' to your collection');if(S.modal)closeModal()}
+    return;
+  }
+  if(d.open){S.rv={editing:false,rating:0};viewModal(d.open);return}
+  switch(d.act){
+    case 'add':findModal();break;
+    case 'find-online':findOnline();break;
+    case 'manual':{var fq=S.find.q.trim(),fib=cleanIsbn(fq);editModal(null,{prefill:(/^[\d\-\sXx]+$/.test(fq)&&validIsbn(fib))?{isbn:isbn13(fib)}:{title:fq}});break}
+    case 'change-book':findModal();break;
+    case 'force-new':S.modal.forceNew=true;saveForm(S.modal.another);break;
+    case 'scan':startScan();break;
+    case 'scan-stop':stopScan();break;
+    case 'pick-isbn':{var pst=S.find.isbn[d.isbn];if(pst&&pst.data)editModal(null,{prefill:pst.data,autoIsbn:true});break}
+    case 'edit-review':{var mr=reviewsOf(curWid())[0];S.rv={editing:true,rating:mr?mr.rating:0};reopenModal();break}
+    case 'cancel-review':S.rv={editing:false,rating:0};reopenModal();break;
+    case 'del-review':reviewsOf(curWid()).forEach(function(r){delete S.reviews[r.id]});S.rv={editing:false,rating:0};persist();render();reopenModal();toast('Review deleted');break;
+    case 'merge-work':{
+      var sel=$('#merge-to');if(!sel)break;
+      if(S.confirm==='merge'){var keep=sel.value,drop=S.modal.workId;S.confirm='';mergeWorks(keep,drop);gcCatalog();persist();render();workModal(keep);toast('Merged')}
+      else{S.mergeTo=sel.value;S.confirm='merge';workModal(S.modal.workId)}
+      break}
+    case 'dupes':dupesModal();break;
+    case 'close':case 'cancel':closeModal();break;
+    case 'edit':editModal(S.modal&&S.modal.id);break;
+    case 'save-another':saveForm(true);break;
+    case 'toggle-read':{var c2=S.comics[S.modal.id];putComic(Object.assign({},c2,{read:!c2.read}));viewModal(c2.id);break}
+    case 'del-comic':
+      if(S.confirm==='del-comic'){var id=S.modal.id;closeModal();delComic(id);toast('Deleted')}
+      else{S.confirm='del-comic';viewModal(S.modal.id)}
+      break;
+    case 'remove-cover':draftCover='';draftCoverUrl='';draftCoverColor='';if(draftColorSrc==='cover'){draftColor='';draftColorSrc=''}$('#cands').innerHTML='';cvStatus('Cover removed. One will be drawn from the title.');syncSwatches();refreshCoverPrev();break;
+    case 'remove-spine':draftSpine='';refreshCoverPrev();break;
+    case 'fetch-cover':findCoverOnline();break;
+    case 'fetch-all':fetchMissingCovers();break;
+    case 'export':exportBackup();break;
+    case 'new-folder':S.addingFolder=true;renderFolders();break;
+    case 'rename-folder':S.renaming=true;S.confirm='';renderContent();break;
+    case 'del-folder':
+      if(S.confirm==='del-folder'){S.confirm='';delFolder(S.folder);toast('Folder deleted. Books stay in your collection.')}
+      else{S.confirm='del-folder';renderContent()}
+      break;
+    case 'load-examples':loadExamples();break;
+    case 'clear-examples':clearExamples();break;
+    case 'clear-filters':S.q='';S.pub='';S.author='';S.fmt='';S.bind='';S.read='';$('#q').value='';render();break;
+  }
+});
+document.addEventListener('keydown',function(e){
+  if(e.key==='Escape'&&!$('#modal').hidden){closeModal();return}
+  var t=e.target;
+  if((e.key==='Enter'||e.key===' ')&&t.matches&&t.matches('tr[data-open]')){e.preventDefault();viewModal(t.dataset.open);return}
+  if(e.altKey&&(e.key==='ArrowLeft'||e.key==='ArrowRight')&&t.matches&&t.matches('.spine')){
+    e.preventDefault();
+    var ids=visible().map(function(c){return c.id}), i=ids.indexOf(t.dataset.open), j=i+(e.key==='ArrowLeft'?-1:1);
+    if(i<0||j<0||j>=ids.length)return;
+    ids.splice(i,1);ids.splice(j,0,t.dataset.open);
+    var keep=t.dataset.open;
+    commitReorder(ids);
+    var again=$('.spine[data-open="'+keep+'"]');if(again)again.focus();
+  }
+});
+document.addEventListener('submit',function(e){
+  var f=e.target.dataset.form; if(!f)return;
+  e.preventDefault();
+  if(f==='comic')saveForm(false);
+  if(f==='review'){
+    var wid=e.target.dataset.wid, rtext=$('#rv-text').value.trim();
+    if(!S.rv.rating){toast('Pick a star rating first.');return}
+    var mine=reviewsOf(wid)[0];
+    var rv=Object.assign(mine||{id:newId('r'),workId:wid,created:Date.now()},{rating:S.rv.rating,text:rtext,editionLabel:editionLabelFor(wid),updated:Date.now()});
+    S.reviews[rv.id]=rv;S.rv={editing:false,rating:0};persist();render();reopenModal();toast('Review saved');
+  }
+  if(f==='newfolder'){
+    var n=$('#nf-name').value.trim(); S.addingFolder=false;
+    if(n){var id=newId('f');S.folder=id;putFolder({id:id,name:n,sort:S.sort,created:Date.now(),example:false})} else renderFolders();
+  }
+  if(f==='rename'){
+    var nm=$('#rn-name').value.trim(),fo=S.folders[S.folder];S.renaming=false;
+    if(nm&&fo)putFolder(Object.assign({},fo,{name:nm})); else renderContent();
+  }
+});
+document.addEventListener('change',function(e){
+  var t=e.target;
+  if(t.id==='sort'){
+    S.sort=t.value;saveUI();
+    var f=S.folders[S.folder];if(f)putFolder(Object.assign({},f,{sort:S.sort})); else renderContent();
+  }
+  if(t.id==='pub'){S.pub=t.value;renderContent()}
+  if(t.id==='author'){S.author=t.value;renderContent()}
+  if(t.id==='fmt'){S.fmt=t.value;renderContent()}
+  if(t.id==='bind'){S.bind=t.value;renderContent()}
+  if(t.id==='readf'){S.read=t.value;renderContent()}
+  if(t.id==='f-cover'&&t.files&&t.files[0]){useCoverFile(t.files[0]);t.value=''}
+  if(t.id==='f-spine'&&t.files&&t.files[0]){useSpineFile(t.files[0]);t.value=''}
+  if(t.id==='import-file'&&t.files&&t.files[0]){importBackup(t.files[0]);t.value=''}
+});
+document.addEventListener('input',function(e){
+  var t=e.target;
+  if(t.id==='q'){S.q=t.value;renderContent()}
+  if(t.id==='find-q'){S.find.q=t.value;S.find.ol=null;S.find.olState='';renderFind()}
+  if(t.id==='f-title'||t.id==='f-issue'||t.id==='f-pub'||t.id==='f-author'){refreshCoverPrev()}
+  if(t.id==='f-color-custom'){draftColor=t.value;syncSwatches();refreshCoverPrev()}
+});
+/* paste or drop an image into the edit form */
+function editOpen(){return !$('#modal').hidden&&!!$('#f-title')}
+function imageFrom(dt){
+  var f=null;
+  if(dt&&dt.files)for(var i=0;i<dt.files.length;i++)if(/^image\//.test(dt.files[i].type)){f=dt.files[i];break}
+  return f;
+}
+document.addEventListener('paste',function(e){
+  if(!editOpen())return;
+  var f=imageFrom(e.clipboardData);
+  if(f){e.preventDefault();useCoverFile(f)}
+});
+['dragenter','dragover'].forEach(function(n){document.addEventListener(n,function(e){
+  if(!editOpen())return;
+  var types=e.dataTransfer&&e.dataTransfer.types?Array.prototype.slice.call(e.dataTransfer.types):[];
+  if(types.indexOf('Files')<0&&types.indexOf('text/uri-list')<0)return;
+  e.preventDefault();
+  var z=e.target.closest&&e.target.closest('.drop');
+  $$('.drop').forEach(function(d){d.classList.toggle('over',d===z)});
+})});
+document.addEventListener('dragleave',function(e){if(!e.relatedTarget)$$('.drop').forEach(function(d){d.classList.remove('over')})});
+document.addEventListener('drop',async function(e){
+  if(!editOpen())return;
+  e.preventDefault();$$('.drop').forEach(function(d){d.classList.remove('over')});
+  var toSpine=!!(e.target.closest&&e.target.closest('#spine-drop')), f=imageFrom(e.dataTransfer);
+  if(f){toSpine?useSpineFile(f):useCoverFile(f);return}
+  var url=(e.dataTransfer.getData('text/uri-list')||'').split('\n')[0].trim();
+  if(/^https?:\/\//i.test(url)&&!toSpine){cvStatus('Fetching that image…');setDraftCover(await coverFromUrl(url));cvStatus('Cover added.')}
+});
+/* a cover link that no longer loads falls back to the drawn cover underneath */
+document.addEventListener('error',function(e){var t=e.target;if(t&&t.tagName==='IMG'&&t.closest&&t.closest('.cover'))t.remove()},true);
+window.addEventListener('pagehide',function(){if(saveTimer)flush()});
+document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden'&&saveTimer)flush()});
+if(window.ResizeObserver){
+  new ResizeObserver(function(){
+    if(S.view!=='shelf'||!S.loaded||(drag&&drag.active))return;
+    var w=$('#content').clientWidth;
+    if(Math.abs(w-lastW)>=12)renderContent();
+  }).observe($('#content'));
+}
+
+/* ---------- start ---------- */
+function normAll(){list(S.comics).forEach(norm)}
+async function init(){
+  render();
+  var data=null;
+  try{idb=await openIDB();data=await idbGet('state');S.mode='idb'}
+  catch(e){idb=null;S.mode='local';try{data=JSON.parse(localStorage.getItem('longbox-data-v3')||localStorage.getItem('longbox-data-v2')||'null')}catch(e2){}}
+  if(data){S.comics=data.comics||{};S.folders=data.folders||{};S.views=data.views||{};S.works=data.works||{};S.editions=data.editions||{};S.reviews=data.reviews||{};S.ignored=data.ignored||[]}
+  var mg=migrate();hydrateAll();S.loaded=true;if(mg)persist();
+  try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist()}catch(e){}
+  render();
+}
+init();
+})();
+</script>
+</body>
+</html>
