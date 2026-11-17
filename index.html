@@ -369,12 +369,12 @@ var esc=function(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){r
 var FORMATS={trade:{label:'Collected edition',w:28,h:160},omnibus:{label:'Omnibus',w:50,h:184},compendium:{label:'Compendium',w:64,h:176}};
 var BINDINGS={paperback:'Paperback',hardcover:'Hardcover'};
 var CONDS={MT:'Mint',NM:'Near Mint',VF:'Very Fine',FN:'Fine',VG:'Very Good',GD:'Good',PR:'Poor'};
-var SORTS=[['release','Release date, oldest first'],['release-desc','Release date, newest first'],['reading','Reading order'],['author','Author A to Z'],['title','Title A to Z'],['added','Recently added'],['manual','My shelf order (drag to arrange)']];
+var SORTS=[['release','Release date, oldest first'],['release-desc','Release date, newest first'],['author','Author A to Z'],['title','Title A to Z'],['added','Recently added'],['manual','My shelf order (drag to arrange)']];
 var MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 /* ---------- example data (details are illustrative) ---------- */
 var EX_FOLDERS=[
-  ['ex-batman','Batman','reading'],['ex-spidey','Spider-Man','reading'],['ex-xmen','X-Men','release'],
+  ['ex-batman','Batman','release'],['ex-spidey','Spider-Man','release'],['ex-xmen','X-Men','release'],
   ['ex-miller','Frank Miller','release'],['ex-indie','Image and indie','author'],
   ['ex-superman','Superman','release'],['ex-avengers','Avengers and friends','release'],['ex-vertigo','Vertigo','release']
 ];
@@ -799,21 +799,24 @@ function workScore(a,b){
   var ka=workKey(a),kb=workKey(b);
   if(!ka.t||!kb.t)return 0;
   if(ka.v&&kb.v&&ka.v!==kb.v)return 0;
-  var s=ka.t===kb.t?1:Math.max(jacc(ka.t,kb.t),dice(ka.t,kb.t)*0.95);
+  var same=ka.t===kb.t||ka.t.replace(/ /g,'')===kb.t.replace(/ /g,'');
+  var s=same?1:Math.max(jacc(ka.t,kb.t),dice(ka.t,kb.t)*0.95);
   if(!!ka.v!==!!kb.v)s*=0.85;
   var ao=authOverlap(a.author,b.author);
   if(ao===true)s=Math.min(1,s+0.06);else if(ao===false)s*=0.75;
-  if(ka.t!==kb.t)s=Math.min(s,0.95);
+  if(!same)s=Math.min(s,0.95);
   return s;
 }
 /* how well a typed search matches a catalog book */
 function queryScore(q,w){
   var qn=normTitle(q);if(!qn)return 0;
-  var hay=normTitle(w.title+' '+(w.issue?'vol '+w.issue:'')+' '+(w.author||''));
+  var hay=normTitle(w.title+' '+(w.issue?'vol '+w.issue:'')+' '+(w.author||'')), hs=hay.replace(/ /g,'');
   var ht=tokens(hay), qt=tokens(qn), hit=0;
-  qt.forEach(function(t){if(ht.some(function(h){return h===t||(t.length>1&&h.indexOf(t)===0)}))hit++});
+  qt.forEach(function(t){
+    if(ht.some(function(h){return h===t||(t.length>1&&h.indexOf(t)===0)})||(t.length>=4&&hs.indexOf(t)>-1))hit++;
+  });
   var s=hit/qt.length;
-  if(s<1&&!(qt.length>=3&&s>=SUGGEST)){s=Math.max(0,dice(qn,normTitle(w.title))*0.9)}
+  if(s<1&&!(qt.length>=3&&s>=SUGGEST)){s=hit>=qt.length-1?Math.max(0,dice(qn,normTitle(w.title))*0.9):0}   /* typo tolerance only when at most one word is off */
   return s>=SUGGEST?s+(normTitle(w.title).indexOf(qn)===0?0.2:0):0;
 }
 function isbn13(s){
@@ -1030,14 +1033,29 @@ function guessFormat(s){return /omnibus/i.test(s)?'omnibus':(/compendium/i.test(
 function bindingOf(s){s=String(s||'').toLowerCase();if(/hard|cloth|library|boards/.test(s))return 'hardcover';if(/paper|trade|soft|mass|pocket/.test(s))return 'paperback';return ''}
 function yearOf(s){var m=/\b(1[89]\d\d|20\d\d)\b/.exec(String(s||''));return m?m[1]:''}
 
-async function searchOLWorks(q){
-  var r=await fetch(OL+'/search.json?q='+encodeURIComponent(q)+'&limit=20&fields=key,title,author_name,first_publish_year,edition_count,cover_i,subject');
+var COMPOUNDS={spiderman:'spider-man',xmen:'x-men',ironman:'iron man',wonderwoman:'wonder woman',antman:'ant-man',spiderwoman:'spider-woman',xfactor:'x-factor',xforce:'x-force',captainamerica:'captain america',blackpanther:'black panther',greenlantern:'green lantern',greenarrow:'green arrow',doctorstrange:'doctor strange'};
+/* the databases match words literally, so try the spelling people actually print, and a shorter tail of a long query */
+function queryVariants(q){
+  var v=q.trim().replace(/\s+/g,' ');
+  var x=v.replace(/[A-Za-z]+/g,function(w){return COMPOUNDS[w.toLowerCase()]||w}), tk=x.split(' '), out=[x];
+  if(tk.length>=5){out.push(tk.slice(-3).join(' '));out.push(tk.slice(0,-3).join(' '))}   /* the distinctive tail, and the series name */
+  return out;
+}
+async function searchMany(fn,qs){
+  var res=await Promise.allSettled(qs.map(fn)), all=[];
+  res.forEach(function(r){if(r.status==='fulfilled')all=all.concat(r.value)});
+  if(!all.length&&res.every(function(r){return r.status==='rejected'}))throw new Error('all failed');
+  return all;
+}
+async function searchOLOne(q){
+  var r=await fetch(OL+'/search.json?q='+encodeURIComponent(q)+'&limit=20&fields=key,title,subtitle,author_name,first_publish_year,edition_count,cover_i,subject');
   if(!r.ok)throw new Error('HTTP '+r.status);
   return ((await r.json()).docs||[]).filter(function(d){return d.title&&!/#\s*\d/.test(d.title)}).map(function(d){
-    var sv=splitVolume(d.title);
+    var full=d.title+(d.subtitle&&!/edition|deluxe|hardcover|paperback/i.test(d.subtitle)?': '+d.subtitle:''), sv=splitVolume(full);
     return {src:'ol',title:sv.title,issue:sv.issue,author:(d.author_name||[]).slice(0,3).join(', '),year:d.first_publish_year||0,coverId:d.cover_i||0,coverUrl:'',olKey:d.key||'',edCount:d.edition_count||0,comic:/comic|graphic novel|manga/i.test((d.subject||[]).join(' '))};
   });
 }
+function searchOLWorks(qs){return searchMany(searchOLOne,qs)}
 function recFromGB(v){
   var i=v.volumeInfo||{};
   if(!i.title||(v.saleInfo&&v.saleInfo.isEbook))return null;
@@ -1050,13 +1068,14 @@ function recFromGB(v){
   var sv=splitVolume(full), yr=yearOf(i.publishedDate);
   return {src:'gb',title:sv.title,issue:sv.issue,author:(i.authors||[]).slice(0,3).join(', '),year:+yr||0,coverId:0,coverUrl:cu,
     comic:/comic|graphic/i.test((i.categories||[]).join(' ')),
-    edition:{src:'gb',isbn:isbn,publisher:i.publisher||'',year:yr,binding:'',format:guessFormat(full),pages:i.pageCount||0,coverId:0,coverUrl:cu}};
+    edition:{src:'gb',titleFull:full,isbn:isbn,publisher:i.publisher||'',year:yr,binding:'',format:guessFormat(full),pages:i.pageCount||0,coverId:0,coverUrl:cu}};
 }
-async function searchGB(q){
+async function searchGBOne(q){
   var r=await fetch(GB+'?q='+encodeURIComponent(q)+'&maxResults=30&printType=books&langRestrict=en');
   if(!r.ok)throw new Error('HTTP '+r.status);
   return ((await r.json()).items||[]).map(recFromGB).filter(Boolean);
 }
+function searchGB(qs){return searchMany(searchGBOne,qs)}
 /* many records, one story: the same normalized title, volume and author fold together */
 function clusterRecords(recs){
   recs=recs.slice().sort(function(a,b){return (a.src==='ol'?0:1)-(b.src==='ol'?0:1)||(b.edCount||0)-(a.edCount||0)});
@@ -1104,10 +1123,11 @@ function olEdition(e){
   if(/ebook|audio|\bcd\b|dvd|kindle|electronic|microform|video|vhs|cassette/i.test(pf))return null;
   var i13=(e.isbn_13||[])[0], i10=(e.isbn_10||[])[0], isbn=i13?cleanIsbn(i13):(i10?isbn13(i10):'');
   var cid=(e.covers||[]).filter(function(x){return x>0})[0]||0;
-  return {src:'ol',isbn:isbn,publisher:(e.publishers||[])[0]||'',year:yearOf(e.publish_date),binding:bindingOf(pf),
+  return {src:'ol',titleFull:(e.title||'')+(e.subtitle&&!/edition|deluxe|hardcover|paperback/i.test(e.subtitle)?': '+e.subtitle:''),isbn:isbn,publisher:(e.publishers||[])[0]||'',year:yearOf(e.publish_date),binding:bindingOf(pf),
     format:guessFormat((e.title||'')+' '+(e.subtitle||'')+' '+pf),pages:e.number_of_pages||0,coverId:cid,coverUrl:''};
 }
 async function loadStoryEditions(st){
+  var o=S.find.online;
   S.find.eds[st.id]={state:'loading',list:[]};renderFind();
   var all=[],fails=0;
   await Promise.all(st.olKeys.slice(0,4).map(async function(k){
@@ -1117,8 +1137,83 @@ async function loadStoryEditions(st){
       ((await r.json()).entries||[]).forEach(function(e){var x=olEdition(e);if(x)all.push(x)});
     }catch(e){fails++}
   }));
+  if(S.find.online!==o)return;
   S.find.eds[st.id]={state:fails&&!all.length?'error':'done',list:all};
+  splitStory(st);
   renderFind();
+}
+/* A series container ("Amazing Spider-Man Epic Collection") holds many different books as editions.
+   When its editions carry different volume titles, each volume becomes its own result. */
+function stripTitlePrefix(st,full){
+  var bt=tokens(normTitle(st.title)), words=String(full).trim().split(/\s+/), j=0, k=0;
+  for(;k<words.length;k++){
+    var nw=normTitle(words[k]), wt=tokens(nw);
+    if(!nw)continue;
+    if(j>=bt.length)break;
+    var ok=true;for(var m=0;m<wt.length;m++)if(bt[j+m]!==wt[m]){ok=false;break}
+    if(!ok)break;
+    j+=wt.length;
+  }
+  if(j<bt.length)return null;
+  return words.slice(k).join(' ').replace(/^[\s:,\-\u2013\u2014]+/,'').trim();
+}
+function parseRest(rest){
+  var m=/^(?:volume|vol\.?|book|part|v\.?)\s*(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b[\s:,\-\u2013\u2014]*(.*)$/i.exec(rest);
+  if(m)return {issue:String(NUMWORDS[m[1].toLowerCase()]||m[1]),sub:m[2].trim()};
+  var sv=splitVolume(rest);
+  return sv.issue?{issue:sv.issue,sub:sv.title}:{issue:'',sub:rest};
+}
+function volumeOf(st,e){
+  var full=String(e.titleFull||'').replace(/\s*\([^)]*\)\s*$/,'').trim();
+  if(!full)return null;
+  var rest=stripTitlePrefix(st,full);if(rest===null)rest=full;
+  var p=parseRest(rest), key=p.issue?'v'+p.issue:normTitle(p.sub);   /* a volume number identifies the volume, whatever else the title adds */
+  return key?{key:key,sub:p.sub,issue:p.issue}:null;
+}
+function splitStory(st){
+  var o=S.find.online;if(!o)return false;
+  var pool=((S.find.eds[st.id]||{}).list||[]).concat(st.gbEditions||[]), groups={}, order=[], generic=[];
+  pool.forEach(function(e){
+    var v=volumeOf(st,e);
+    if(!v){generic.push(e);return}
+    if(!groups[v.key]){groups[v.key]={sub:v.sub,issue:v.issue,eds:[]};order.push(v.key)}
+    if(!groups[v.key].sub&&v.sub)groups[v.key].sub=v.sub;
+    groups[v.key].eds.push(e);
+  });
+  if(order.length<3)return false;
+  var subs=order.map(function(k){
+    var g=groups[k], ys=g.eds.map(function(e){return +e.year}).filter(Boolean);
+    var sub={id:st.id+'.'+(++storySeq),title:g.sub?st.title+': '+g.sub:st.title,issue:g.issue,author:st.author,year:ys.length?Math.min.apply(null,ys):0,
+      coverId:(g.eds.filter(function(e){return e.coverId})[0]||{}).coverId||0,coverUrl:(g.eds.filter(function(e){return e.coverUrl})[0]||{}).coverUrl||'',
+      olKeys:[],gbEditions:[],edCount:g.eds.length,comic:st.comic,local:null};
+    S.find.eds[sub.id]={state:'done',list:g.eds};
+    return sub;
+  });
+  var keep=generic.length?[st]:[];
+  if(generic.length){S.find.eds[st.id]={state:'done',list:generic.filter(function(e){return e.src!=='gb'})};st.gbEditions=generic.filter(function(e){return e.src==='gb'});st.olKeys=[]}
+  /* a volume another record already described (for instance Google Books listed it by name) is the same book: fold them */
+  subs.forEach(function(sub){
+    o.stories.slice().forEach(function(c){
+      if(c===st||subs.indexOf(c)>-1||workScore(sub,c)<0.85)return;
+      var l=S.find.eds[sub.id].list;(c.gbEditions||[]).forEach(function(e){l.push(e)});
+      if(!sub.coverUrl&&c.coverUrl)sub.coverUrl=c.coverUrl;
+      o.stories.splice(o.stories.indexOf(c),1);
+    });
+  });
+  var i=o.stories.indexOf(st);
+  if(i>-1)o.stories.splice.apply(o.stories,[i,1].concat(keep,subs));
+  if(S.find.open===st.id)S.find.open='';
+  return true;
+}
+/* look inside the likeliest series containers up front, so the right volume can show up as its own result */
+async function preloadSeries(o,q){
+  var qs=normTitle(q).replace(/ /g,'');
+  var cands=o.stories.filter(function(st){
+    if(!st.olKeys.length||S.find.eds[st.id])return false;
+    var tt=tokens(normTitle(st.title));
+    return tt.length&&tt.filter(function(x){return qs.indexOf(x)>-1}).length/tt.length>=0.7;
+  }).sort(function(a,b){return b.edCount-a.edCount}).slice(0,3);
+  await Promise.all(cands.map(function(st){return loadStoryEditions(st)}));
 }
 /* the editions of one story, from your catalog, Open Library and Google Books, with repeats folded by ISBN */
 function mergedEditions(st){
@@ -1136,7 +1231,7 @@ function mergedEditions(st){
     add({src:'local',localEditionId:le.id,isbn:le.isbn,publisher:le.publisher,year:le.releaseDate?String(le.releaseDate).slice(0,4):'',binding:le.binding,format:le.format,pages:0,coverId:0,coverUrl:le.cover||le.coverUrl||''});
   });
   var on=S.find.eds[st.id];
-  (on&&on.list||[]).concat(st.gbEditions||[]).forEach(function(e){add(Object.assign({},e))});
+  (on&&on.list||[]).concat(st.gbEditions||[]).forEach(function(e){var x=Object.assign({},e),v=volumeOf(st,e);if(v&&v.sub)x.vol=v.sub;add(x)});
   /* entries with no ISBN that match an ISBN'd one (same publisher, year, binding) are the same edition: keep one */
   function samePY(a,b){return String(a.publisher||'').toLowerCase()===String(b.publisher||'').toLowerCase()&&String(a.year||'')===String(b.year||'')&&(!a.binding||!b.binding||a.binding===b.binding)}
   var seen={};
@@ -1152,7 +1247,7 @@ function mergedEditions(st){
   return out.sort(function(a,b){return (+a.year||9999)-(+b.year||9999)});
 }
 function edLabelOnline(e){
-  return [BINDINGS[e.binding]||'Binding not listed',FORMATS[e.format]&&e.format!=='trade'?FORMATS[e.format].label:'',e.publisher,e.year,e.isbn?'ISBN '+e.isbn:''].filter(Boolean).join(' · ');
+  return [e.vol||'',BINDINGS[e.binding]||'Binding not listed',FORMATS[e.format]&&e.format!=='trade'?FORMATS[e.format].label:'',e.publisher,e.year,e.isbn?'ISBN '+e.isbn:''].filter(Boolean).join(' · ');
 }
 function storyThumb(st){
   if(st.local&&editionsOf(st.local.id).some(function(e){return e.cover||e.coverUrl}))return thumbFor(st.local);
@@ -1227,11 +1322,13 @@ function scheduleOnline(){
 async function runOnline(q){
   var o=S.find.online;if(!o||o.q!==q)return;
   o.state='loading';renderFind();
-  var res=await Promise.allSettled([searchOLWorks(q),searchGB(q)]), recs=[], failed=0;
+  var vs=queryVariants(q);
+  var res=await Promise.allSettled([searchOLWorks(vs),searchGB(vs)]), recs=[], failed=0;
   if(S.find.online!==o)return;
   res.forEach(function(r){if(r.status==='fulfilled')recs=recs.concat(r.value);else failed++});
   o.stories=clusterRecords(recs);o.failed=failed;o.state=failed===2?'error':'done';
   renderFind();
+  if(failed<2){await preloadSeries(o,q);if(S.find.online===o)renderFind()}
 }
 async function lookupIsbnGB(k){
   var r=await fetch(GB+'?q=isbn:'+k+'&maxResults=1');
@@ -1495,9 +1592,9 @@ function renderContent(){
       return '<div class="cardwrap"><button type="button" class="card" data-open="'+esc(c.id)+'">'+coverHTML(c)+'<span class="t">'+esc(nameOf(c))+'</span>'+(c.author?'<span class="s">'+esc(c.author)+'</span>':'')+'<span class="s mono">'+esc(fmtDate(c.releaseDate)||'No date')+'</span></button>'+got+'</div>';
     }).join('')+'</div>';
   } else {
-    body='<div class="tablewrap"><table><thead><tr><th>Title</th><th>Author</th><th>Released</th><th>Order</th><th class="col-opt">Publisher</th><th class="col-opt">Format</th><th class="col-opt">Cond.</th>'+(S.tab==='own'?'<th>Read</th>':'<th></th>')+'</tr></thead><tbody>'+
+    body='<div class="tablewrap"><table><thead><tr><th>Title</th><th>Author</th><th>Released</th><th class="col-opt">Publisher</th><th class="col-opt">Format</th>'+(S.tab==='own'?'<th>Read</th>':'<th></th>')+'</tr></thead><tbody>'+
       items.map(function(c){
-        return '<tr data-open="'+esc(c.id)+'" tabindex="0"><td class="ttl">'+esc(nameOf(c))+(c.subtitle?'<small>'+esc(c.subtitle)+'</small>':'')+'</td><td class="au">'+esc(c.author||'')+'</td><td class="mono">'+esc(fmtDate(c.releaseDate))+'</td><td class="mono">'+(c.readOrder==null||c.readOrder===''?'':esc(c.readOrder))+'</td><td class="col-opt">'+esc(c.publisher||'')+'</td><td class="col-opt">'+esc(fmtLabel(c))+'</td><td class="col-opt mono">'+esc(c.condition||'')+'</td><td>'+(S.tab==='own'?(c.read?'<span class="pill good">Read</span>':'<span class="pill">Unread</span>'):'<button type="button" class="btn small" data-got="'+esc(c.id)+'">Got it</button>')+'</td></tr>';
+        return '<tr data-open="'+esc(c.id)+'" tabindex="0"><td class="ttl">'+esc(nameOf(c))+(c.subtitle?'<small>'+esc(c.subtitle)+'</small>':'')+'</td><td class="au">'+esc(c.author||'')+'</td><td class="mono">'+esc(fmtDate(c.releaseDate))+'</td><td class="col-opt">'+esc(c.publisher||'')+'</td><td class="col-opt">'+esc(fmtLabel(c))+'</td><td>'+(S.tab==='own'?(c.read?'<span class="pill good">Read</span>':'<span class="pill">Unread</span>'):'<button type="button" class="btn small" data-got="'+esc(c.id)+'">Got it</button>')+'</td></tr>';
       }).join('')+'</tbody></table></div>';
   }
   el.innerHTML=banner+head+body+tail;
@@ -1513,7 +1610,7 @@ function viewModal(id){
   S.modal={id:id,mode:'view'};
   var fl=(c.folderIds||[]).map(function(x){return S.folders[x]}).filter(Boolean).map(function(f){return '<span class="chip">'+esc(f.name)+'</span>'}).join('');
   var rows=[['Author',esc(c.author||'')],['Publisher',esc(c.publisher||'')],['Released',esc(fmtDate(c.releaseDate))],['ISBN',esc(c.isbn||'')],['Format',esc(fmtLabel(c))],
-    ['Condition',c.condition?esc(CONDS[c.condition]+' ('+c.condition+')'):''],['Reading order',c.readOrder==null||c.readOrder===''?'':esc(c.readOrder)],
+    
     ['Folders',fl?'<div class="chips">'+fl+'</div>':''],['Notes',esc(c.notes||'')]].filter(function(r){return r[1]});
   var wish=c.status==='wish';
   $('#sheet').innerHTML='<button type="button" class="x" data-act="close" aria-label="Close">×</button>'+
@@ -1578,8 +1675,6 @@ function editModal(id,opts){
     '<form class="form" data-form="comic" novalidate>'+
     (c?'<p class="note full">Changing the book or edition details here changes them for every copy and review that shares them.</p>':'')+
     workPart+edPart+
-    '<label class="f">Condition<select id="f-cond"><option value="">Not graded</option>'+Object.keys(CONDS).map(function(k){return '<option value="'+k+'"'+(d.condition===k?' selected':'')+'>'+CONDS[k]+' ('+k+')</option>'}).join('')+'</select></label>'+
-    '<label class="f">Reading order<input id="f-order" type="number" step="any" value="'+(d.readOrder==null?'':esc(d.readOrder))+'" placeholder="Where it falls in story order"></label>'+
     '<label class="f">Status<select id="f-status"><option value="own"'+(d.status!=='wish'?' selected':'')+'>In my collection</option><option value="wish"'+(d.status==='wish'?' selected':'')+'>On my wishlist</option></select></label>'+
     '<div class="full"><div class="chips"><label class="chip"><input type="checkbox" id="f-read"'+(d.read?' checked':'')+'> I have read it</label></div></div>'+
     '<div class="full"><div class="note" style="margin-bottom:6px">Folders</div><div class="chips">'+(fl.length?fl.map(function(f){return '<label class="chip"><input type="checkbox" name="folder" value="'+esc(f.id)+'"'+((d.folderIds||[]).indexOf(f.id)>-1?' checked':'')+'> '+esc(f.name)+'</label>'}).join(''):'<span class="note">No folders yet. Create one from the left rail, then tick it here.</span>')+'</div></div>'+
@@ -1622,10 +1717,9 @@ function readForm(){
   if($('#f-release')&&rel&&!/^\d{4}(-(0[1-9]|1[0-2]))?$/.test(rel)){err.textContent='Enter the release date as a year (1988) or year and month (1988-03).';$('#f-release').focus();return null}
   var ibRaw=g('f-isbn'), ib=cleanIsbn(ibRaw);
   if($('#f-isbn')&&ibRaw&&!validIsbn(ib)){err.textContent='An ISBN has 10 or 13 digits. Leave it blank if the book has none.';$('#f-isbn').focus();return null}
-  var ord=$('#f-order').value.trim();
   return {title:title,issue:g('f-issue'),subtitle:g('f-subtitle'),author:g('f-author'),publisher:g('f-pub'),releaseDate:rel,isbn:ib?isbn13(ib):'',
     format:$('#f-format')?$('#f-format').value:(eb.format||'trade'),binding:$('#f-bind')?$('#f-bind').value:(eb.binding||'paperback'),
-    readOrder:ord===''?null:Number(ord),condition:$('#f-cond').value,status:$('#f-status').value,read:$('#f-read').checked,
+    status:$('#f-status').value,read:$('#f-read').checked,
     folderIds:$$('input[name=folder]:checked').map(function(i){return i.value}),notes:$('#f-notes').value.trim(),
     cover:draftCover||'',coverUrl:draftCover?'':(draftCoverUrl||''),coverColor:draftCoverColor||'',spineImg:draftSpine||'',
     color:draftColor||'',colorSource:draftColor?(draftColorSrc||'user'):''};
@@ -1849,7 +1943,7 @@ document.addEventListener('click',function(e){
   if(d.folder){
     if(S.tab==='catalog'){S.tab='own';saveUI()}
     S.folder=d.folder;S.renaming=false;S.confirm='';
-    var f=S.folders[d.folder];if(f&&f.sort){S.sort=f.sort;saveUI()}
+    var f=S.folders[d.folder];if(f&&f.sort&&SORTS.some(function(s){return s[0]===f.sort})){S.sort=f.sort;saveUI()}
     render();return;
   }
   if(d.got){
