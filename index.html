@@ -279,9 +279,52 @@ input[type=search],.findbar input{border:1px solid var(--line);background:var(--
 .linkbtn{border:0;background:none;color:var(--accent);text-decoration:underline;padding:0;font:inherit;cursor:pointer}
 .fed.other{border-style:dashed;color:var(--ink-2)}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+/* online version: sign-in screen, account chip, public profile pages */
+[hidden]{display:none!important}
+.authwrap{min-height:100vh;display:grid;place-items:center;padding:24px 16px;background:var(--bg)}
+.authcard{width:min(420px,100%);background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:26px;display:grid;gap:14px}
+.authcard h2{font:400 30px/1 var(--display);letter-spacing:.04em;margin:0}
+.authcard form{display:grid;gap:12px}
+.authcard label{display:grid;gap:4px;font-size:13px;color:var(--ink-2)}
+.authcard input{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:8px;padding:9px 11px;font:inherit;min-width:0}
+.authcard .err{color:var(--danger);margin:0;min-height:1.2em}
+.authcard .ok{color:var(--good);margin:0}
+.authcard .note a{color:var(--accent)}
+.authtabs{display:flex}
+.authtabs button{flex:1}
+.acct{display:flex;align-items:center;gap:8px;margin-left:auto}
+.pubdot{color:var(--good);font-size:9px;vertical-align:middle}
+.acctform{display:grid;gap:10px;margin-top:10px}
+.acctform label.f{display:grid;gap:4px;font-size:13px;color:var(--ink-2)}
+.acctform input:not([type=checkbox]),.acctform textarea,.visrow select{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:8px;padding:8px 10px;font:inherit;min-width:0;width:100%}
+.visrow select{width:auto}
+.vislist{display:grid;gap:6px;margin:6px 0}
+.visrow{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid var(--line);border-radius:8px;padding:6px 10px}
+.linkrow{display:flex;gap:8px}
+.linkrow input{flex:1}
+.acctform .err{color:var(--danger);margin:0}
+.rvwho{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.rvwho a{color:var(--accent);font-weight:700;text-decoration:none}
+.pf{max-width:1100px;margin:0 auto;padding:16px max(16px,env(safe-area-inset-left,0px));display:grid;gap:18px}
+.pf-top{display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--line);padding-bottom:12px}
+.pf-brand{font:400 30px/1 var(--display);letter-spacing:.05em;color:var(--ink);text-decoration:none}
+.pf-head{display:flex;gap:16px;align-items:center}
+.pf-head h1{margin:0;font:400 40px/1 var(--display);letter-spacing:.04em}
+.pf-head p{margin:4px 0 0}
+.pf-bio{max-width:60ch}
+.pf-av{flex:none;width:64px;height:64px;border-radius:50%;display:grid;place-items:center;background:var(--accent);color:var(--accent-ink);font:400 34px/1 var(--display)}
+.pf-tabs{display:flex;gap:6px;flex-wrap:wrap}
+.pf-tabs .btn[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.pf-body{display:grid;gap:14px}
+.pf-reviews{display:grid;gap:10px}
+
 </style>
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.100.0"></script>
 </head>
 <body>
+<div id="auth" hidden></div>
+<div id="profile" hidden></div>
 
 <div class="app">
   <header class="top">
@@ -296,6 +339,7 @@ input[type=search],.findbar input{border:1px solid var(--line);background:var(--
         <p id="sync">Comic collection tracker</p>
       </div>
     </div>
+    <div class="acct" id="acct"></div>
     <ul class="stats" id="stats"></ul>
   </header>
 
@@ -310,7 +354,7 @@ input[type=search],.findbar input{border:1px solid var(--line);background:var(--
         <button type="button" class="btn small" data-act="export">Download backup</button>
         <label class="btn small" for="import-file">Restore from backup</label>
         <input id="import-file" class="sr" type="file" accept="application/json,.json">
-        <p class="note">Everything is stored in this browser. Download a backup now and then, and to move to another device.</p>
+        <p class="note" id="rail-note">Everything is stored in this browser. Download a backup now and then, and to move to another device.</p>
       </div>
     </nav>
 
@@ -477,7 +521,7 @@ function cmpNum(a,b){return a===b?0:(a<b?-1:1)}
 function fmtDate(d){if(!d)return '';var m=/^(\d{4})-(\d{2})/.exec(d);if(m)return MONTHS[+m[2]-1]+' '+m[1];return d}
 function nameOf(c){return c.title+(c.issue?' Vol. '+c.issue:'')}
 function toast(msg){var t=$('#toast');t.textContent=msg;t.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(function(){t.hidden=true},3600)}
-function newId(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
+function newId(p){try{return p+crypto.randomUUID()}catch(e){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,10)}}
 function list(o){return Object.keys(o).map(function(k){return o[k]})}
 function fmtLabel(c){var f=FORMATS[c.format];return f?f.label+' · '+(BINDINGS[c.binding]||'Paperback'):''}
 
@@ -568,9 +612,10 @@ function snapshot(){
   var cs={};list(S.comics).forEach(function(c){cs[c.id]=stripCopy(c)});
   return {version:3,works:S.works,editions:S.editions,reviews:S.reviews,ignored:S.ignored,comics:cs,folders:S.folders,views:S.views};
 }
-function persist(){hydrateAll();clearTimeout(saveTimer);saveTimer=setTimeout(flush,250)}
+function persist(){hydrateAll();if(CLOUD){cloudQueue();return}clearTimeout(saveTimer);saveTimer=setTimeout(flush,250)}
 function flush(){
   clearTimeout(saveTimer);
+  if(CLOUD)return;
   var p;
   try{p=idb?idbPut('state',snapshot()):Promise.resolve(localStorage.setItem('longbox-data-v3',JSON.stringify(snapshot())))}
   catch(e){p=Promise.reject(e)}
@@ -610,6 +655,7 @@ function clearExamples(){
 
 /* ---------- backup ---------- */
 function exportBackup(){
+  if(CLOUD)gcCatalog();
   var blob=new Blob([JSON.stringify(snapshot())],{type:'application/json'});
   var a=document.createElement('a'), d=new Date();
   a.href=URL.createObjectURL(blob);
@@ -622,6 +668,7 @@ async function importBackup(file){
   try{
     var j=JSON.parse(await file.text());
     if(!j||typeof j.comics!=='object')throw new Error('not a backup');
+    if(CLOUD)j=cloudRemapBackup(j);
     var n=0;
     ['works','editions','reviews'].forEach(function(k){Object.keys(j[k]||{}).forEach(function(id){S[k][id]=j[k][id]})});
     Object.keys(j.comics).forEach(function(k){var c=j.comics[k];if(c&&(c.title||c.editionId)){c.id=c.id||k;S.comics[c.id]=c;n++}});
@@ -971,6 +1018,7 @@ function edLabel(e){
 }
 function reviewsHTML(wid){
   var w=S.works[wid];if(!w)return '';
+  if(CLOUD)return reviewsHTMLCloud(wid);
   var rs=reviewsOf(wid), mine=rs[0], avg=avgRating(wid), body;
   var head='<div class="rvhead"><h3>Reviews</h3>'+(rs.length?'<span class="stars" role="img" aria-label="Average rating '+avg.toFixed(1)+' out of 5">'+stars(avg)+'</span><span class="note">'+avg.toFixed(1)+' · '+rs.length+(rs.length===1?' review':' reviews')+'</span>':'<span class="note">No reviews yet</span>')+'</div>';
   if(mine&&!S.rv.editing){
@@ -1256,7 +1304,7 @@ function storyThumb(st){
 }
 function storyMeta(st){
   var own=st.local?workCopies(st.local.id).length:0, eds=st.local?editionsOf(st.local.id).length:0;
-  return [st.local?'In your catalog':'',own?'you have '+own:'',st.edCount>(eds||0)&&st.olKeys.length+st.gbEditions.length?st.edCount+' editions listed online':''].filter(Boolean).join(' · ')||'Not in your catalog yet';
+  return [st.local?(CLOUD?'On Longbox':'In your catalog'):'',own?'you have '+own:'',st.edCount>(eds||0)&&st.olKeys.length+st.gbEditions.length?st.edCount+' editions listed online':''].filter(Boolean).join(' · ')||(CLOUD?'Not on Longbox yet':'Not in your catalog yet');
 }
 function storyCard(st){
   var open=S.find.open===st.id;
@@ -1288,7 +1336,7 @@ function renderFind(){
     var k=isbn13(ib), ed=editionByIsbn(k);
     if(ed&&S.works[ed.workId]){
       var w=S.works[ed.workId];
-      html='<h3 class="rh">Already in your catalog</h3><div class="fcard open"><button type="button" class="frow" data-story="w'+esc(w.id)+'">'+thumbFor(w)+'<span class="ft"><b>'+esc(nameOf(w))+'</b><span class="note">'+esc(w.author||'')+'</span></span></button><div class="feds"><button type="button" class="fed hi" data-ed="w'+esc(w.id)+'|0">'+esc(edLabel(ed))+'</button></div></div>';
+      html='<h3 class="rh">'+(CLOUD?'Already on Longbox':'Already in your catalog')+'</h3><div class="fcard open"><button type="button" class="frow" data-story="w'+esc(w.id)+'">'+thumbFor(w)+'<span class="ft"><b>'+esc(nameOf(w))+'</b><span class="note">'+esc(w.author||'')+'</span></span></button><div class="feds"><button type="button" class="fed hi" data-ed="w'+esc(w.id)+'|0">'+esc(edLabel(ed))+'</button></div></div>';
       S.find.curStories['w'+w.id]={id:'w'+w.id,title:w.title,issue:w.issue,author:w.author,local:w,olKeys:[],gbEditions:[]};
       S.find.curEds['w'+w.id]=[{src:'local',localEditionId:ed.id,isbn:ed.isbn}];
     } else {
@@ -1315,6 +1363,7 @@ function renderFind(){
 function scheduleOnline(){
   clearTimeout(findTimer);
   var q=S.find.q.trim();
+  cloudSearchSoon(q);
   if(q.length<3||isIsbnQuery(q)){S.find.online=null;return}
   S.find.online={q:q,state:'wait',stories:[],failed:0};
   findTimer=setTimeout(function(){runOnline(q)},450);
@@ -1338,6 +1387,7 @@ async function lookupIsbnGB(k){
   return {title:sv.title,issue:sv.issue,subtitle:'',author:(i.authors||[]).join(', '),publisher:i.publisher||'',releaseDate:yearOf(i.publishedDate),isbn:k};
 }
 async function lookupIsbnFlow(k){
+  if(CLOUD&&await cloudIsbn(k)){renderFind();return}
   var d=null,failed=0;
   try{d=await lookupIsbnOL(k)}catch(e){failed++}
   if(d){var sv=splitVolume(d.title);d.title=sv.title;d.issue=sv.issue||d.issue||''}
@@ -1413,11 +1463,11 @@ function workModal(wid){
   $('#sheet').innerHTML='<button type="button" class="x" data-act="close" aria-label="Close">×</button><h2 id="mtitle">'+esc(nameOf(w))+'</h2>'+
     '<div class="note">'+esc([w.author,w.subtitle].filter(Boolean).join(' · '))+'</div>'+
     '<h3 class="rh">Editions</h3><div class="edlist">'+edHtml+'</div>'+reviewsHTML(wid)+
-    (others.length?'<section class="rvbox"><h3>Same book as another entry?</h3><p class="note">Merge them so editions and reviews are shared. This entry is folded into the one you pick.</p><div class="mergerow"><label class="sr" for="merge-to">Merge into</label><select id="merge-to">'+others.map(function(o){return '<option value="'+esc(o.id)+'"'+(S.mergeTo===o.id?' selected':'')+'>'+esc(nameOf(o)+(o.author?' — '+o.author:''))+'</option>'}).join('')+'</select><button type="button" class="btn small'+(S.confirm==='merge'?' danger armed':'')+'" data-act="merge-work">'+(S.confirm==='merge'?'Confirm merge':'Merge')+'</button></div></section>':'');
+    (others.length&&(!CLOUD||cloud.me)?'<section class="rvbox"><h3>Same book as another entry?</h3><p class="note">Merge them so editions and reviews are shared. This entry is folded into the one you pick.</p><div class="mergerow"><label class="sr" for="merge-to">Merge into</label><select id="merge-to">'+others.map(function(o){return '<option value="'+esc(o.id)+'"'+(S.mergeTo===o.id?' selected':'')+'>'+esc(nameOf(o)+(o.author?' — '+o.author:''))+'</option>'}).join('')+'</select><button type="button" class="btn small'+(S.confirm==='merge'?' danger armed':'')+'" data-act="merge-work">'+(S.confirm==='merge'?'Confirm merge':'Merge')+'</button></div></section>':'');
   openModal();
 }
 function renderCatalog(el){
-  var q=S.q.trim(), all=list(S.works);
+  var q=S.q.trim(), all=list(S.works).filter(function(w){return !CLOUD||workCopies(w.id).length||reviewsOf(w.id).length});
   var ws=all.map(function(w){return {w:w,s:q?queryScore(q,w):1}}).filter(function(x){return x.s>0}).sort(function(a,b){return b.s-a.s||a.w.title.localeCompare(b.w.title)||cmpNum(num(a.w.issue),num(b.w.issue))});
   var nd=findDupes().length;
   var head='<div class="head"><h2>Catalog</h2><span class="meta">'+(q?ws.length+' of ':'')+all.length+(all.length===1?' book':' books')+' · every edition of a book shares one page and one set of reviews</span><div class="acts"><button type="button" class="btn small" data-act="dupes">Find duplicates'+(nd?' ('+nd+')':'')+'</button></div></div>';
@@ -1441,7 +1491,7 @@ function dupesModal(){
     var ea=S.editions[d.a],eb=S.editions[d.b],w=S.works[ea.workId];
     return '<div class="dpair"><div class="note">Two editions of '+esc(nameOf(w))+' look identical</div><ul class="elist"><li>'+esc(edLabel(ea))+'</li><li>'+esc(edLabel(eb))+'</li></ul><div class="chips"><button type="button" class="btn small" data-merge="edition:'+esc(d.a)+':'+esc(d.b)+'">Merge into one edition</button><button type="button" class="btn small" data-ignore="'+esc(dupeKey(d.a,d.b))+'">Not the same</button></div></div>';
   }).join(''):'<p class="note">No likely duplicates. Entries that are clearly the same book are linked automatically when you add or import them.</p>';
-  $('#sheet').innerHTML='<button type="button" class="x" data-act="close" aria-label="Close">×</button><h2 id="mtitle">Possible duplicates</h2>'+html+'<div class="actions"><span class="push"></span><button type="button" class="btn" data-act="cancel">Done</button></div>';
+  $('#sheet').innerHTML='<button type="button" class="x" data-act="close" aria-label="Close">×</button><h2 id="mtitle">Possible duplicates</h2>'+(CLOUD?'<p class="note">'+(isMod()?'As a moderator, a merge takes effect for everyone straight away.':'Merging changes a book for everyone, so your suggestions go to a moderator to review.')+'</p>':'')+html+'<div class="actions"><span class="push"></span><button type="button" class="btn" data-act="cancel">Done</button></div>';
   openModal();
 }
 
@@ -1496,8 +1546,9 @@ function renderTop(){
   $('#stats').innerHTML=[[own.length,'Owned'],[wish,'Wishlist'],[Object.keys(series).length,'Titles'],[Object.keys(S.folders).length,'Folders']]
     .map(function(s){return '<li><b>'+s[0]+'</b><span>'+s[1]+'</span></li>'}).join('');
   var sy=$('#sync');
-  sy.textContent=saveFailed?'Not saving. Download a backup.':(S.mode==='idb'||S.mode==='local'?'Saved in this browser':'Comic collection tracker');
-  sy.classList.toggle('warn',saveFailed);
+  if(CLOUD){renderSync();var rn=$('#rail-note');if(rn)rn.textContent='Your collection is saved to your account and follows you to any device. A backup file is still handy to keep.'}
+  else{sy.textContent=saveFailed?'Not saving. Download a backup.':(S.mode==='idb'||S.mode==='local'?'Saved in this browser':'Comic collection tracker');
+  sy.classList.toggle('warn',saveFailed)}
   $$('[data-tab]').forEach(function(b){b.setAttribute('aria-pressed',String(b.dataset.tab===S.tab))});
   $$('[data-view]').forEach(function(b){b.setAttribute('aria-pressed',String(b.dataset.view===S.view))});
 }
@@ -1507,7 +1558,7 @@ function renderFolders(){
   var html='<button type="button" class="fbtn" data-folder="all" aria-current="'+(S.folder==='all')+'"><span class="nm">All books</span><span class="n">'+tabItems.length+'</span></button>';
   fl.forEach(function(f){
     var n=tabItems.filter(function(c){return (c.folderIds||[]).indexOf(f.id)>-1}).length;
-    html+='<button type="button" class="fbtn" data-folder="'+esc(f.id)+'" aria-current="'+(S.folder===f.id)+'"><span class="nm">'+esc(f.name)+'</span><span class="n">'+n+'</span></button>';
+    html+='<button type="button" class="fbtn" data-folder="'+esc(f.id)+'" aria-current="'+(S.folder===f.id)+'"><span class="nm">'+esc(f.name)+(CLOUD&&f.visibility==='public'?' <span class="pubdot" title="Public on your profile">●</span>':'')+'</span><span class="n">'+n+'</span></button>';
   });
   $('#folders').innerHTML=html;
   $('#newfolder').innerHTML=S.addingFolder?
@@ -1542,7 +1593,7 @@ function headHTML(items,total){
   var sortName=SORTS.filter(function(s){return s[0]===S.sort})[0][1].toLowerCase();
   var acts='';
   if(f){
-    acts=S.renaming?'':'<button type="button" class="btn small" data-act="rename-folder">Rename</button><button type="button" class="btn small danger'+(S.confirm==='del-folder'?' armed':'')+'" data-act="del-folder">'+(S.confirm==='del-folder'?'Confirm delete folder':'Delete folder')+'</button>';
+    acts=S.renaming?'':(CLOUD?'<button type="button" class="btn small" data-act="toggle-folder-vis">'+(f.visibility==='public'?'Public · make private':'Private · make public')+'</button>':'')+'<button type="button" class="btn small" data-act="rename-folder">Rename</button><button type="button" class="btn small danger'+(S.confirm==='del-folder'?' armed':'')+'" data-act="del-folder">'+(S.confirm==='del-folder'?'Confirm delete folder':'Delete folder')+'</button>';
   }
   var h=S.renaming&&f?'<form class="inline-form" data-form="rename"><label class="sr" for="rn-name">Folder name</label><input id="rn-name" value="'+esc(f.name)+'" maxlength="40"><button class="btn small primary" type="submit">Save</button></form>':'<h2>'+esc(title)+'</h2>';
   return '<div class="head">'+h+'<span class="meta">'+meta+' · sorted by '+esc(sortName)+'</span><div class="acts">'+acts+'</div></div>';
@@ -1562,7 +1613,7 @@ function renderContent(){
     banner='<div class="banner"><span>These are example books so you can try the shelf. Their details are illustrative.</span><span class="chips">'+(moreEx?'<button type="button" class="btn small" data-act="load-examples">Add more examples</button>':'')+'<button type="button" class="btn small" data-act="clear-examples">Remove examples</button></span></div>';
   }
   if(!books.length){
-    el.innerHTML='<div class="empty"><h3>Your longbox is empty</h3><p>Add the books you own, keep a wishlist of the ones you want, and group them into folders like Batman or Image. Drag spines on the shelf to arrange them your way.</p><div class="acts"><button type="button" class="btn primary" data-act="add">Add your first book</button><button type="button" class="btn" data-act="load-examples">Load '+EX_COMICS.length+' example books</button></div></div>'+tail;
+    el.innerHTML='<div class="empty"><h3>Your longbox is empty</h3><p>Add the books you own, keep a wishlist of the ones you want, and group them into folders like Batman or Image. Drag spines on the shelf to arrange them your way.</p><div class="acts"><button type="button" class="btn primary" data-act="add">Add your first book</button>'+(CLOUD?'':'<button type="button" class="btn" data-act="load-examples">Load '+EX_COMICS.length+' example books</button>')+'</div></div>'+tail;
     return;
   }
   var head=headHTML(items,sc.length);
@@ -1923,6 +1974,7 @@ document.addEventListener('click',function(e){
   if(t.id==='modal'){closeModal();return}
   if(!el)return;
   var d=el.dataset;
+  if(CLOUD&&cloudClick(e,el,d))return;
   if(d.color!==undefined){if(d.color==='@cover'){draftColor=draftCoverColor;draftColorSrc='cover'}else{draftColor=d.color;draftColorSrc=d.color?'user':''}syncSwatches();refreshCoverPrev();return}
   if(d.cand){pickCandidate(d.cand);return}
   if(d.story){
@@ -2093,7 +2145,632 @@ if(window.ResizeObserver){
 
 /* ---------- start ---------- */
 function normAll(){list(S.comics).forEach(norm)}
+/* ---------- accounts and sync (Supabase) ----------
+   When config.js holds a Supabase URL and key, the app asks you to sign in and keeps everything in your account:
+   your copies, folders and reviews live in your own rows, while works and editions live in one shared catalog.
+   Without config.js the app still works exactly as before, saving only in this browser. */
+var CFG=window.LONGBOX_CONFIG||{};
+var HAS_LIB=!!(window.supabase&&window.supabase.createClient);
+var CLOUD=!!(CFG.supabaseUrl&&CFG.supabaseAnonKey&&HAS_LIB);
+var CLOUD_NOLIB=!!(CFG.supabaseUrl&&CFG.supabaseAnonKey&&!HAS_LIB);
+var sb=null;
+var cloud={me:null,uid:null,email:'',ready:false,entering:false,base:{works:{},editions:{},copies:{},folders:{},reviews:{},prefs:''},
+  timer:null,busy:false,again:false,failed:false,retry:null,pulledAt:0,sTimer:null,remapped:false,partial:false};
+var P=null;             /* the public profile being viewed */
+var authMode='signin';
+
+function isMod(){return !!(cloud.me&&cloud.me.role==='moderator')}
+function isNet(err){return !err||!err.code}
+function errText(err){return (err&&(err.message||err.details))||'Something went wrong.'}
+
+/* ----- rows <-> app objects ----- */
+function mapWork(r){return {id:r.id,title:r.title,issue:r.issue||'',subtitle:r.subtitle||'',author:r.author||'',created:Date.parse(r.created_at)||0}}
+function mapEdition(r){return {id:r.id,workId:r.work_id,isbn:r.isbn||'',publisher:r.publisher||'',releaseDate:r.release_date||'',format:r.format,binding:r.binding,cover:'',coverUrl:r.cover_url||'',coverColor:r.cover_color||'',created:Date.parse(r.created_at)||0}}
+function wSig(w){return JSON.stringify([w.title||'',w.issue||'',w.subtitle||'',w.author||''])}
+function eSig(e){return JSON.stringify([e.isbn||'',e.publisher||'',e.releaseDate||'',e.format||'trade',e.binding||'paperback',e.cover?'data':(e.coverUrl||''),e.coverColor||''])}
+var COPY_COLS={id:1,editionId:1,status:1,read:1,folderIds:1,notes:1,added:1,example:1,workId:1};
+function copyRow(c){
+  var o=stripCopy(c), data={};
+  Object.keys(o).sort().forEach(function(k){var v=o[k];if(!COPY_COLS[k]&&v!==undefined&&v!==null&&v!=='')data[k]=v});
+  return {id:o.id,edition_id:o.editionId,status:o.status==='wish'?'wish':'own',read:!!o.read,folder_ids:(o.folderIds||[]).slice(),notes:String(o.notes||''),added:Math.round(o.added||0),data:data};
+}
+function folderRow(f){return {id:f.id,name:String(f.name||'Folder').slice(0,60),sort:f.sort||'release',shelf_order:(f.order||[]).slice(),visibility:f.visibility==='public'?'public':'private',created:Math.round(f.created||0)}}
+function reviewRow(r){return {id:r.id,work_id:r.workId,rating:Math.max(1,Math.min(5,(r.rating|0)||1)),body:String(r.text||''),edition_label:String(r.editionLabel||''),updated_at:new Date(r.updated||r.created||Date.now()).toISOString()}}
+function allOrder(){return (S.views.all&&S.views.all.order)||[]}
+
+/* catalog rows from the server become cached entries; local edits that are not saved yet are never overwritten */
+function adoptCatalog(ws,es){
+  (ws||[]).forEach(function(w){if(!S.works[w.id]){S.works[w.id]=w;cloud.base.works[w.id]=wSig(w)}});
+  (es||[]).forEach(function(e){if(!S.editions[e.id]){e=Object.assign({cover:''},e);S.editions[e.id]=e;cloud.base.editions[e.id]=eSig(e)}});
+}
+function rebase(){
+  var b=cloud.base;b.copies={};b.folders={};b.reviews={};
+  list(S.comics).forEach(function(c){if(c.editionId)b.copies[c.id]=JSON.stringify(copyRow(c))});
+  list(S.folders).forEach(function(f){b.folders[f.id]=JSON.stringify(folderRow(f))});
+  list(S.reviews).forEach(function(r){b.reviews[r.id]=JSON.stringify(reviewRow(r))});
+  b.prefs=JSON.stringify(allOrder());
+}
+
+/* ----- loading your library ----- */
+async function cloudLoad(){
+  var r=await sb.rpc('my_library');
+  if(r.error)throw r.error;
+  var d=r.data;
+  cloud.me=d.profile;
+  S.works={};S.editions={};S.comics={};S.folders={};S.reviews={};
+  cloud.base={works:{},editions:{},copies:{},folders:{},reviews:{},prefs:''};
+  adoptCatalog(d.works,d.editions);
+  (d.copies||[]).forEach(function(c){c.folderIds=c.folderIds||[];S.comics[c.id]=c});
+  (d.folders||[]).forEach(function(f){S.folders[f.id]=f});
+  (d.reviews||[]).forEach(function(v){S.reviews[v.id]=v});
+  S.views={all:{id:'all',order:(d.profile.prefs&&d.profile.prefs.allOrder)||[]}};
+  hydrateAll();normAll();hydrateAll();
+  rebase();
+  cloud.pulledAt=Date.now();
+}
+
+/* ----- pictures go to storage, not into the database ----- */
+async function uploadDataUri(uri,name){
+  var blob=await (await fetch(uri)).blob();
+  var path=cloud.me.id+'/'+name+'-'+Math.random().toString(36).slice(2,8)+'.jpg';
+  var up=await sb.storage.from('covers').upload(path,blob,{contentType:blob.type||'image/jpeg',cacheControl:'31536000'});
+  if(up.error)throw up.error;
+  return sb.storage.from('covers').getPublicUrl(path).data.publicUrl;
+}
+
+/* ----- saving: compare with what the server has and send only the differences ----- */
+function cloudQueue(){clearTimeout(cloud.timer);cloud.timer=setTimeout(function(){cloud.timer=null;cloudFlush()},700);renderSync()}
+async function cloudFlush(){
+  if(!CLOUD||!cloud.me)return;
+  clearTimeout(cloud.timer);cloud.timer=null;
+  if(cloud.busy){cloud.again=true;return}
+  cloud.busy=true;renderSync();
+  try{
+    do{cloud.again=false;await cloudPush()}while(cloud.again);
+    cloud.failed=false;clearTimeout(cloud.retry);
+  }catch(e){
+    cloud.failed=true;if(window.console)console.warn(e);
+    toast(isNet(e)?'You look offline. Your changes will be saved when you reconnect.':'Could not save: '+errText(e));
+    clearTimeout(cloud.retry);cloud.retry=setTimeout(cloudFlush,10000);
+  }
+  cloud.busy=false;
+  if(cloud.remapped){cloud.remapped=false;render()}
+  renderSync();
+}
+async function claimOne(e){
+  var w=S.works[e.workId];if(!w)return;
+  if(e.cover&&/^data:/.test(e.cover)){e.coverUrl=await uploadDataUri(e.cover,'cover');e.cover=''}
+  var r=await sb.rpc('claim_edition',{
+    w:{id:w.id,title:w.title,issue:w.issue,subtitle:w.subtitle,author:w.author},
+    e:{id:e.id,isbn:e.isbn,publisher:e.publisher,releaseDate:e.releaseDate,format:e.format,binding:e.binding,coverUrl:e.coverUrl||'',coverColor:e.coverColor||''}});
+  if(r.error)throw r.error;
+  var nw=r.data.work, ne=Object.assign({cover:''},r.data.edition), oldE=e.id, oldW=w.id;
+  /* the server may already have this book or edition: switch to its ids */
+  if(nw.id!==oldW){
+    list(S.editions).forEach(function(x){if(x.workId===oldW)x.workId=nw.id});
+    list(S.reviews).forEach(function(v){if(v.workId===oldW)v.workId=nw.id});
+    delete S.works[oldW];
+  }
+  S.works[nw.id]=nw;
+  if(ne.id!==oldE){
+    list(S.comics).forEach(function(c){if(c.editionId===oldE)c.editionId=ne.id});
+    delete S.editions[oldE];
+  }
+  S.editions[ne.id]=ne;
+  cloud.base.works[nw.id]=wSig(nw);cloud.base.editions[ne.id]=eSig(ne);
+  if(nw.id!==oldW||ne.id!==oldE)cloud.remapped=true;
+  hydrateAll();
+}
+async function revertCatalog(kind,id){
+  var r=await sb.from(kind==='work'?'works':'editions').select('*').eq('id',id).maybeSingle();
+  if(!r.data)return;
+  if(kind==='work'){S.works[id]=mapWork(r.data);cloud.base.works[id]=wSig(S.works[id])}
+  else{S.editions[id]=mapEdition(r.data);cloud.base.editions[id]=eSig(S.editions[id])}
+  hydrateAll();cloud.remapped=true;
+}
+async function chunked(arr,n,fn){for(var i=0;i<arr.length;i+=n)await fn(arr.slice(i,i+n))}
+async function cloudPush(){
+  var i,b=cloud.base;
+  /* 1. books that are not in the shared catalog yet */
+  var fresh=list(S.editions).filter(function(e){return !b.editions[e.id]&&copiesOf(e.id).length}).map(function(e){return e.id});
+  for(i=0;i<fresh.length;i++){var fe=S.editions[fresh[i]];if(fe&&!b.editions[fe.id])await claimOne(fe)}
+  /* 2. changes to catalog entries that already exist */
+  var wch=list(S.works).filter(function(w){return b.works[w.id]!==undefined&&b.works[w.id]!==wSig(w)});
+  for(i=0;i<wch.length;i++){
+    var w=wch[i], sent=wSig(w);
+    try{
+      var rw=await sb.rpc('update_work',{wid:w.id,patch:{title:w.title,issue:w.issue,subtitle:w.subtitle,author:w.author}});
+      if(rw.error)throw rw.error;
+      S.works[w.id]=Object.assign(S.works[w.id],rw.data);b.works[w.id]=wSig(S.works[w.id]);
+      if(b.works[w.id]!==sent)cloud.partial=true;
+    }catch(err){if(isNet(err))throw err;await revertCatalog('work',w.id);toast('Could not change that book: '+errText(err))}
+  }
+  var ech=list(S.editions).filter(function(e){return b.editions[e.id]!==undefined&&b.editions[e.id]!==eSig(e)});
+  for(i=0;i<ech.length;i++){
+    var e=ech[i];
+    try{
+      if(e.cover&&/^data:/.test(e.cover)){e.coverUrl=await uploadDataUri(e.cover,'cover');e.cover=''}
+      var sentE=eSig(e);
+      var re=await sb.rpc('update_edition',{eid:e.id,patch:{isbn:e.isbn,publisher:e.publisher,releaseDate:e.releaseDate,format:e.format,binding:e.binding,coverUrl:e.coverUrl||'',coverColor:e.coverColor||''}});
+      if(re.error)throw re.error;
+      S.editions[e.id]=Object.assign(S.editions[e.id],re.data,{cover:''});b.editions[e.id]=eSig(S.editions[e.id]);
+      if(b.editions[e.id]!==sentE)cloud.partial=true;
+    }catch(err2){if(isNet(err2)||!err2.code)throw err2;await revertCatalog('edition',e.id);toast('Could not change that edition: '+errText(err2))}
+  }
+  if(cloud.partial){cloud.partial=false;cloud.remapped=true;toast('Some details are shared with everyone and can only be changed by whoever added the book, so only blank fields were filled in.')}
+  /* 3. your copies */
+  var cs=list(S.comics).filter(function(c){return c.editionId&&b.editions[c.editionId]!==undefined}), up=[];
+  for(i=0;i<cs.length;i++){
+    var c=cs[i];
+    if(c.spineImg&&/^data:/.test(c.spineImg))c.spineImg=await uploadDataUri(c.spineImg,'spine');
+    var row=copyRow(c), sig=JSON.stringify(row);
+    if(b.copies[c.id]!==sig)up.push({row:row,sig:sig});
+  }
+  await chunked(up,100,async function(part){
+    var r=await sb.from('copies').upsert(part.map(function(x){return x.row}),{onConflict:'id'});
+    if(r.error)throw r.error;
+    part.forEach(function(x){b.copies[x.row.id]=x.sig});
+  });
+  var gone=Object.keys(b.copies).filter(function(id){return !S.comics[id]});
+  await chunked(gone,100,async function(part){
+    var r=await sb.from('copies').delete().in('id',part);
+    if(r.error)throw r.error;
+    part.forEach(function(id){delete b.copies[id]});
+  });
+  /* 4. folders */
+  var fu=[];
+  list(S.folders).forEach(function(f){var row=folderRow(f),sig=JSON.stringify(row);if(b.folders[f.id]!==sig)fu.push({row:row,sig:sig})});
+  if(fu.length){
+    var rf=await sb.from('folders').upsert(fu.map(function(x){return x.row}),{onConflict:'id'});
+    if(rf.error)throw rf.error;
+    fu.forEach(function(x){b.folders[x.row.id]=x.sig});
+  }
+  var fg=Object.keys(b.folders).filter(function(id){return !S.folders[id]});
+  if(fg.length){
+    var rd=await sb.from('folders').delete().in('id',fg);
+    if(rd.error)throw rd.error;
+    fg.forEach(function(id){delete b.folders[id]});
+  }
+  /* 5. the order of "All books" */
+  var po=JSON.stringify(allOrder());
+  if(po!==b.prefs){
+    var prefs=Object.assign({},cloud.me.prefs||{},{allOrder:allOrder()});
+    var rp=await sb.from('profiles').update({prefs:prefs}).eq('id',cloud.me.id);
+    if(rp.error)throw rp.error;
+    cloud.me.prefs=prefs;b.prefs=po;
+  }
+  /* 6. reviews (after their books exist on the server) */
+  var ru=[];
+  list(S.reviews).forEach(function(v){
+    if(b.works[v.workId]===undefined)return;
+    var row=reviewRow(v),sig=JSON.stringify(row);if(b.reviews[v.id]!==sig)ru.push({row:Object.assign({user_id:cloud.me.id},row),sig:sig,id:v.id});
+  });
+  for(i=0;i<ru.length;i++){
+    var rr=await sb.from('reviews').upsert(ru[i].row,{onConflict:'user_id,work_id'});
+    if(rr.error)throw rr.error;
+    b.reviews[ru[i].id]=ru[i].sig;
+  }
+  var rg=Object.keys(b.reviews).filter(function(id){return !S.reviews[id]});
+  if(rg.length){
+    var rx=await sb.from('reviews').delete().in('id',rg);
+    if(rx.error)throw rx.error;
+    rg.forEach(function(id){delete b.reviews[id]});
+  }
+}
+function cloudDirty(){return !!(cloud.timer||cloud.busy||cloud.failed)}
+async function cloudSettle(){clearTimeout(cloud.timer);cloud.timer=null;if(cloud.busy){await new Promise(function(r){var t=setInterval(function(){if(!cloud.busy){clearInterval(t);r()}},100)})}await cloudFlush()}
+function renderSync(){
+  var sy=$('#sync');if(!sy||!CLOUD)return;
+  sy.textContent=cloud.failed?'Not saved yet. Retrying…':(cloud.timer||cloud.busy?'Saving…':'Saved to your account');
+  sy.classList.toggle('warn',cloud.failed);
+}
+function renderAcct(){
+  var a=$('#acct');if(!a)return;
+  a.innerHTML=cloud.me?'<button type="button" class="btn small" data-act="account">@'+esc(cloud.me.username)+(isMod()?' · mod':'')+'</button>':'';
+}
+window.addEventListener('beforeunload',function(e){if(CLOUD&&cloud.me&&cloudDirty()){e.preventDefault();e.returnValue=''}});
+window.addEventListener('online',function(){if(CLOUD&&cloud.me&&cloud.failed)cloudFlush()});
+document.addEventListener('visibilitychange',function(){
+  if(!CLOUD||!cloud.me)return;
+  if(document.visibilityState==='hidden'&&cloud.timer)cloudFlush();
+  if(document.visibilityState==='visible'&&!cloudDirty()&&!S.modal&&!(drag&&drag.active)&&Date.now()-cloud.pulledAt>60000&&$('#profile').hidden){
+    cloudLoad().then(function(){render()},function(){});
+  }
+});
+
+/* ----- sign in, sign up, reset ----- */
+function authHTML(mode,msg,kind){
+  var brand='<div class="brand"><svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true"><rect x="4" y="10" width="7" height="26" rx="1" fill="var(--accent)"/><rect x="13" y="4" width="12" height="32" rx="1" fill="var(--ink)"/><rect x="27" y="12" width="8" height="24" rx="1" fill="var(--accent)" opacity=".55"/></svg><div><h1>Longbox</h1><p>Your comic collection, on a shelf you can share</p></div></div>';
+  var note=msg?'<p class="'+(kind==='ok'?'ok':'err')+'" role="'+(kind==='ok'?'status':'alert')+'">'+esc(msg)+'</p>':'<p class="err" role="alert"></p>';
+  if(mode==='loading')return '<div class="authwrap"><div class="authcard">'+brand+'<p class="note">Loading…</p></div></div>';
+  if(mode==='nolib')return '<div class="authwrap"><div class="authcard">'+brand+'<p class="err">The sign-in library could not be loaded. Check your connection and reload the page.</p></div></div>';
+  if(mode==='error')return '<div class="authwrap"><div class="authcard">'+brand+'<p class="err">'+esc(msg||'Could not load your collection.')+'</p><button type="button" class="btn primary" data-auth-mode="retry">Try again</button> <button type="button" class="btn" data-auth-mode="signout">Sign out</button></div></div>';
+  var tabs=(mode==='signin'||mode==='signup')?'<div class="seg authtabs" role="group" aria-label="Sign in or create an account"><button type="button" data-auth-mode="signin" aria-pressed="'+(mode==='signin')+'">Sign in</button><button type="button" data-auth-mode="signup" aria-pressed="'+(mode==='signup')+'">Create account</button></div>':'';
+  var f='';
+  if(mode==='signin')f='<form data-auth="signin" novalidate><label>Email<input id="au-email" type="email" autocomplete="email" required></label><label>Password<input id="au-pass" type="password" autocomplete="current-password" required></label>'+note+'<button class="btn primary" type="submit">Sign in</button><button type="button" class="linkbtn" data-auth-mode="forgot">Forgot your password?</button></form>';
+  if(mode==='signup')f='<form data-auth="signup" novalidate><label>Username<input id="au-user" autocomplete="username" maxlength="24" placeholder="letters, numbers and underscores" required></label><label>Email<input id="au-email" type="email" autocomplete="email" required></label><label>Password<input id="au-pass" type="password" autocomplete="new-password" minlength="8" required><span class="note">At least 8 characters.</span></label>'+note+'<button class="btn primary" type="submit">Create account</button><p class="note">Your username appears on your public page and your reviews. Your email never does.</p></form>';
+  if(mode==='forgot')f='<form data-auth="forgot" novalidate><h2>Reset your password</h2><label>Email<input id="au-email" type="email" autocomplete="email" required></label>'+note+'<button class="btn primary" type="submit">Send reset link</button><button type="button" class="linkbtn" data-auth-mode="signin">Back to sign in</button></form>';
+  if(mode==='reset')f='<form data-auth="reset" novalidate><h2>Choose a new password</h2><label>New password<input id="au-pass" type="password" autocomplete="new-password" minlength="8" required></label>'+note+'<button class="btn primary" type="submit">Save password</button></form>';
+  return '<div class="authwrap"><div class="authcard">'+brand+tabs+f+'<p class="note"><a href="#/">Longbox</a> keeps your collection in your account, so it follows you to any device.</p></div></div>';
+}
+function showAuth(mode,msg,kind){authMode=mode;var a=$('#auth');a.innerHTML=authHTML(mode,msg,kind);a.hidden=false;$('.app').hidden=true;$('#profile').hidden=true;var i=$('#au-user')||$('#au-email')||$('#au-pass');if(i&&mode!=='loading')i.focus()}
+function authMsg(m,kind){var p=$('#auth .err,#auth .ok');if(p){p.textContent=m;p.className=kind==='ok'?'ok':'err';p.setAttribute('role',kind==='ok'?'status':'alert')}}
+$('#auth').addEventListener('click',function(e){
+  var b=e.target.closest('[data-auth-mode]');if(!b)return;
+  var m=b.dataset.authMode;
+  if(m==='retry'){cloud.uid=null;sb.auth.getSession().then(function(r){cloudEnter(r.data.session)});return}
+  if(m==='signout'){sb.auth.signOut();return}
+  showAuth(m);
+});
+$('#auth').addEventListener('submit',async function(e){
+  var f=e.target.dataset.auth;if(!f)return;
+  e.preventDefault();
+  var btn=$('button[type=submit]',e.target), email=$('#au-email')&&$('#au-email').value.trim(), pass=$('#au-pass')&&$('#au-pass').value;
+  function busy(on){if(btn)btn.disabled=on}
+  try{
+    busy(true);
+    if(f==='signin'){
+      if(!email||!pass){authMsg('Enter your email and password.');return}
+      var r=await sb.auth.signInWithPassword({email:email,password:pass});
+      if(r.error){authMsg(r.error.message);return}
+      await cloudEnter(r.data.session);
+    }
+    if(f==='signup'){
+      var u=$('#au-user').value.trim().toLowerCase();
+      if(!/^[a-z0-9_]{3,24}$/.test(u)){authMsg('A username is 3 to 24 letters, numbers or underscores.');return}
+      if(!email){authMsg('Enter your email address.');return}
+      if(!pass||pass.length<8){authMsg('Choose a password of at least 8 characters.');return}
+      var av=await sb.rpc('username_available',{u:u});
+      if(av.data===false){authMsg('That username is taken. Try another.');return}
+      var s=await sb.auth.signUp({email:email,password:pass,options:{data:{username:u},emailRedirectTo:location.origin+location.pathname}});
+      if(s.error){authMsg(s.error.message);return}
+      if(s.data.session)await cloudEnter(s.data.session);
+      else showAuth('signin','Account created. Check your email for a confirmation link, then sign in.','ok');
+    }
+    if(f==='forgot'){
+      if(!email){authMsg('Enter your email address.');return}
+      var rr=await sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});
+      if(rr.error){authMsg(rr.error.message);return}
+      authMsg('If that address has an account, a reset link is on its way.','ok');
+    }
+    if(f==='reset'){
+      if(!pass||pass.length<8){authMsg('Choose a password of at least 8 characters.');return}
+      var ru=await sb.auth.updateUser({password:pass});
+      if(ru.error){authMsg(ru.error.message);return}
+      cloud.uid=null;var gs=await sb.auth.getSession();await cloudEnter(gs.data.session);toast('Password updated');
+    }
+  }catch(err){authMsg(isNet(err)?'Could not reach the server. Check your connection.':errText(err))}
+  finally{busy(false)}
+});
+
+/* ----- entering and leaving the app ----- */
+async function cloudEnter(session){
+  if(!session||cloud.entering)return;
+  if(cloud.uid===session.user.id&&cloud.me){routeNow();return}
+  cloud.entering=true;
+  try{
+    cloud.uid=session.user.id;cloud.email=session.user.email||'';
+    await cloudLoad();
+    S.loaded=true;
+    routeNow();
+  }catch(err){cloud.uid=null;cloud.me=null;showAuth('error',isNet(err)?'Could not reach the server. Check your connection.':errText(err))}
+  cloud.entering=false;
+}
+function routeNow(){
+  var m=/^#\/u\/([A-Za-z0-9_]{3,24})\/?$/.exec(location.hash||'');
+  if(m){showProfile(m[1].toLowerCase());return}
+  $('#profile').hidden=true;
+  if(cloud.me){$('#auth').hidden=true;$('.app').hidden=false;render();renderAcct()}
+  else if(cloud.ready)showAuth(authMode==='reset'?'reset':'signin');
+}
+window.addEventListener('hashchange',function(){
+  if(!CLOUD||!cloud.ready)return;
+  if(S.modal)closeModal();
+  routeNow();
+});
+async function cloudInit(){
+  S.mode='cloud';
+  $('.app').hidden=true;
+  showAuth('loading');
+  sb=window.supabase.createClient(CFG.supabaseUrl,CFG.supabaseAnonKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+  sb.auth.onAuthStateChange(function(ev,session){
+    setTimeout(function(){
+      if(ev==='PASSWORD_RECOVERY'){cloud.ready=true;showAuth('reset');return}
+      if(ev==='SIGNED_OUT'&&cloud.ready){
+        cloud.uid=null;cloud.me=null;S.comics={};S.folders={};S.works={};S.editions={};S.reviews={};S.views={};S.loaded=false;
+        cloud.base={works:{},editions:{},copies:{},folders:{},reviews:{},prefs:''};
+        S.modal=null;$('#modal').hidden=true;authMode='signin';routeNow();return}
+      if(ev==='SIGNED_IN'&&cloud.ready&&session&&authMode!=='reset')cloudEnter(session);
+    },0);
+  });
+  var r=await sb.auth.getSession();
+  cloud.ready=true;
+  if(authMode==='reset')return;
+  if(r.data&&r.data.session)await cloudEnter(r.data.session);
+  else{S.loaded=true;routeNow()}
+}
+
+/* ----- shared catalog: search it as you type, look up ISBNs in it ----- */
+function cloudSearchSoon(q){
+  clearTimeout(cloud.sTimer);
+  if(!CLOUD||q.length<2||isIsbnQuery(q))return;
+  cloud.sTimer=setTimeout(async function(){
+    try{
+      var r=await sb.rpc('search_works',{q:q,lim:30});
+      if(r.error||!r.data||S.find.q.trim()!==q)return;
+      adoptCatalog(r.data.works,r.data.editions);
+      if($('#find-results'))renderFind();
+    }catch(e){}
+  },250);
+}
+async function cloudIsbn(k){
+  try{
+    var r=await sb.rpc('catalog_by_isbn',{v_isbn:k});
+    if(r.data){adoptCatalog([r.data.work],[r.data.edition]);return true}
+  }catch(e){}
+  return false;
+}
+
+/* ----- merging duplicates: moderators merge, everyone else suggests ----- */
+async function cloudMerge(kind,keep,drop){
+  var tbl=kind==='work'?cloud.base.works:cloud.base.editions;
+  if(tbl[keep]===undefined||tbl[drop]===undefined){toast('One of those is still being saved. Try again in a moment.');return false}
+  if(isMod()){
+    await cloudSettle();
+    var r=await sb.rpc(kind==='work'?'merge_works':'merge_editions',{p_keep:keep,p_drop:drop});
+    if(r.error){toast('Could not merge: '+errText(r.error));return false}
+    await cloudLoad();render();toast('Merged for everyone');return true;
+  }
+  var q=await sb.from('merge_requests').insert({kind:kind,keep_id:keep,drop_id:drop});
+  if(q.error){toast('Could not send that: '+errText(q.error));return false}
+  toast('Thanks. A moderator will review your suggestion.');return false;
+}
+async function modModal(){
+  S.modal={mode:'mod',id:null};
+  $('#sheet').innerHTML='<button type="button" class="x" data-act="close" aria-label="Close">×</button><h2 id="mtitle">Merge requests</h2><p class="note">Loading…</p>';
+  openModal();
+  var r=await sb.from('merge_requests').select('*').eq('status','open').order('created_at');
+  if(!S.modal||S.modal.mode!=='mod')return;
+  if(r.error){$('#sheet').innerHTML='<button type="button" class="x" data-act="close" aria-label="Close">×</button><h2 id="mtitle">Merge requests</h2><p class="err">'+esc(errText(r.error))+'</p>';return}
+  var reqs=r.data||[], wids={}, eids={};
+  reqs.forEach(function(q){(q.kind==='work'?wids:eids)[q.keep_id]=1;(q.kind==='work'?wids:eids)[q.drop_id]=1});
+  var we=Object.keys(eids), ws=Object.keys(wids);
+  var er=we.length?await sb.from('editions').select('*').in('id',we):{data:[]};
+  (er.data||[]).forEach(function(x){wids[x.work_id]=1});
+  var allW=Object.keys(wids);
+  var wr=allW.length?await sb.from('works').select('*').in('id',allW):{data:[]};
+  var wed=allW.length?await sb.from('editions').select('*').in('work_id',allW):{data:[]};
+  adoptCatalog((wr.data||[]).map(mapWork),(wed.data||[]).map(mapEdition));
+  function card(kind,id){
+    if(kind==='work'){var w=S.works[id];if(!w)return '<div class="dcard"><span class="note">Removed</span></div>';return '<div class="dcard">'+thumbFor(w)+'<span class="ft"><b>'+esc(nameOf(w))+'</b><span class="note">'+esc(w.author||'No author')+'</span><span class="note">'+editionsOf(id).length+' editions</span></span></div>'}
+    var e=S.editions[id],w2=e&&S.works[e.workId];if(!e||!w2)return '<div class="dcard"><span class="note">Removed</span></div>';
+    return '<div class="dcard">'+thumbFor(w2)+'<span class="ft"><b>'+esc(nameOf(w2))+'</b><span class="note">'+esc(edLabel(e))+'</span></span></div>';
+  }
+  var html=reqs.length?reqs.map(function(q){
+    return '<div class="dpair"><div class="note">Suggested merge of two '+(q.kind==='work'?'books':'editions')+', '+esc(new Date(q.created_at).toLocaleDateString())+'</div><div class="dcols">'+card(q.kind,q.keep_id)+card(q.kind,q.drop_id)+'</div>'+
+      '<div class="chips"><button type="button" class="btn small primary" data-act="mod-approve" data-req="'+esc(q.id)+'">Keep left, merge right into it</button>'+
+      '<button type="button" class="btn small" data-act="mod-swap" data-kind="'+esc(q.kind)+'" data-keep="'+esc(q.drop_id)+'" data-drop="'+esc(q.keep_id)+'">Keep right instead</button>'+
+      '<button type="button" class="btn small" data-act="mod-reject" data-req="'+esc(q.id)+'">Not the same</button></div></div>';
+  }).join(''):'<p class="note">No open requests.</p>';
+  $('#sheet').innerHTML='<button type="button" class="x" data-act="close" aria-label="Close">×</button><h2 id="mtitle">Merge requests</h2><p class="note">Merging changes the book for everyone: copies, editions and reviews all move to the one you keep.</p>'+html+'<div class="actions"><span class="push"></span><button type="button" class="btn" data-act="cancel">Done</button></div>';
+}
+
+/* ----- reviews from everyone ----- */
+function rvOthers(wid){var s=S.wrev&&S.wrev[wid];return s&&s.list?s.list.filter(function(v){return !cloud.me||v.userId!==cloud.me.id}):[]}
+function rvStats(wid){
+  var ratings=rvOthers(wid).map(function(v){return v.rating}), mine=reviewsOf(wid)[0];
+  if(mine)ratings.push(mine.rating);
+  return {n:ratings.length,avg:ratings.length?ratings.reduce(function(a,b){return a+b},0)/ratings.length:0};
+}
+function rvHeadHTML(wid){
+  var st=rvStats(wid);
+  return '<h3>Reviews</h3>'+(st.n?'<span class="stars" role="img" aria-label="Average rating '+st.avg.toFixed(1)+' out of 5">'+stars(st.avg)+'</span><span class="note">'+st.avg.toFixed(1)+' · '+st.n+(st.n===1?' review':' reviews')+'</span>':'<span class="note">No reviews yet</span>');
+}
+function rvOthersHTML(wid){
+  var s=S.wrev&&S.wrev[wid];
+  if(!s||s.state==='loading')return '<p class="note">Loading reviews…</p>';
+  if(s.state==='error')return '<p class="note">Could not load other reviews.</p>';
+  var o=rvOthers(wid);
+  return o.map(function(v){
+    return '<div class="rv"><div class="rvwho"><a href="#/u/'+esc(v.username)+'">@'+esc(v.username)+'</a> <span class="stars" role="img" aria-label="'+v.rating+' out of 5">'+stars(v.rating)+'</span></div>'+(v.text?'<p>'+esc(v.text)+'</p>':'')+
+      '<div class="note">'+esc(new Date(v.updated).toLocaleDateString())+(v.editionLabel?' · on '+esc(v.editionLabel):'')+'</div>'+
+      (isMod()?'<div class="chips"><button type="button" class="btn small danger" data-act="mod-del-review" data-rid="'+esc(v.id)+'" data-wid="'+esc(wid)+'">Remove</button></div>':'')+'</div>';
+  }).join('');
+}
+async function loadWorkReviews(wid){
+  S.wrev=S.wrev||{};
+  var cur=S.wrev[wid];
+  if(cur&&(cur.state==='loading'||(cur.state==='ready'&&Date.now()-cur.at<60000)))return;
+  S.wrev[wid]={state:'loading',list:cur?cur.list:[]};
+  var r=await sb.from('reviews').select('id,user_id,work_id,rating,body,edition_label,updated_at,profiles(username,display_name)').eq('work_id',wid).order('updated_at',{ascending:false}).limit(50);
+  if(r.error){S.wrev[wid]={state:'error',list:[]};}
+  else S.wrev[wid]={state:'ready',at:Date.now(),list:(r.data||[]).map(function(x){return {id:x.id,userId:x.user_id,workId:x.work_id,rating:x.rating,text:x.body,editionLabel:x.edition_label,updated:Date.parse(x.updated_at)||0,username:(x.profiles&&x.profiles.username)||'someone'}})};
+  var box=$('#rv-others');
+  if(box&&box.dataset.wid===wid){box.innerHTML=rvOthersHTML(wid);var h=$('#rv-head');if(h)h.innerHTML=rvHeadHTML(wid)}
+}
+function reviewsHTMLCloud(wid){
+  var w=S.works[wid];if(!w)return '';
+  var mine=reviewsOf(wid)[0], body;
+  if(cloud.base.works[wid]!==undefined)loadWorkReviews(wid);
+  if(!cloud.me){body='<p class="note">Sign in to write a review.</p>'}
+  else if(mine&&!S.rv.editing){
+    body='<div class="rv"><div class="stars" role="img" aria-label="'+mine.rating+' out of 5">'+stars(mine.rating)+'</div>'+(mine.text?'<p>'+esc(mine.text)+'</p>':'')+
+      '<div class="note">Your review'+(mine.editionLabel?' · on '+esc(mine.editionLabel):'')+'</div>'+
+      '<div class="chips"><button type="button" class="btn small" data-act="edit-review">Edit</button><button type="button" class="btn small danger" data-act="del-review">Delete</button></div></div>';
+  } else {
+    var r=S.rv.rating||0;
+    body='<form class="rvform" data-form="review" data-wid="'+esc(wid)+'"><div class="starpick" role="group" aria-label="Your rating">'+
+      [1,2,3,4,5].map(function(n){return '<button type="button" class="star" data-star="'+n+'" aria-label="'+n+' star'+(n>1?'s':'')+'" aria-pressed="'+(n<=r)+'">★</button>'}).join('')+'</div>'+
+      '<label class="sr" for="rv-text">Review</label><textarea id="rv-text" rows="3" maxlength="4000" placeholder="What did you think? Art, story, how the edition holds up">'+esc(mine&&S.rv.editing?mine.text:'')+'</textarea>'+
+      '<div class="chips"><button type="submit" class="btn small primary">'+(mine?'Save changes':'Post review')+'</button>'+(mine?'<button type="button" class="btn small" data-act="cancel-review">Cancel</button>':'')+'</div></form>';
+  }
+  return '<section class="rvbox"><div class="rvhead" id="rv-head">'+rvHeadHTML(wid)+'</div>'+body+'<div id="rv-others" data-wid="'+esc(wid)+'">'+rvOthersHTML(wid)+'</div><p class="note">Reviews are public and show your username.</p></section>';
+}
+
+/* ----- your profile, and what you share ----- */
+function profileLink(){return location.origin+location.pathname+'#/u/'+(cloud.me?cloud.me.username:'')}
+function accountModal(){
+  var me=cloud.me;S.modal={mode:'account',id:null};
+  var fl=list(S.folders).sort(function(a,b){return (a.created||0)-(b.created||0)});
+  $('#sheet').innerHTML='<button type="button" class="x" data-act="close" aria-label="Close">×</button><h2 id="mtitle">Your profile</h2>'+
+    '<p class="note">Signed in as '+esc(cloud.email)+'. Your email is never shown to anyone.</p>'+
+    '<form id="acct-form" class="acctform" novalidate>'+
+    '<label class="f">Display name<input id="ac-name" maxlength="60" value="'+esc(me.displayName||'')+'" placeholder="@'+esc(me.username)+'"></label>'+
+    '<label class="f">About you<textarea id="ac-bio" rows="3" maxlength="500" placeholder="What do you collect?">'+esc(me.bio||'')+'</textarea></label>'+
+    '<h3 class="rh">What other people can see</h3>'+
+    '<label class="chip"><input type="checkbox" id="ac-lib"'+(me.libraryPublic?' checked':'')+'> Every book I own</label> '+
+    '<label class="chip"><input type="checkbox" id="ac-wish"'+(me.wishlistPublic?' checked':'')+'> My wishlist</label>'+
+    '<div class="vislist">'+(fl.length?fl.map(function(f){return '<label class="visrow"><span>'+esc(f.name)+'</span><select data-fvis="'+esc(f.id)+'"><option value="private"'+(f.visibility==='public'?'':' selected')+'>Private</option><option value="public"'+(f.visibility==='public'?' selected':'')+'>Public</option></select></label>'}).join(''):'<p class="note">Folders you create show up here, each with its own Private or Public setting.</p>')+'</div>'+
+    '<p class="note">Anything not marked public stays private. Your notes are never shown to anyone.</p>'+
+    '<div class="linkrow"><input id="ac-link" readonly value="'+esc(profileLink())+'" aria-label="Link to your public page"><button type="button" class="btn small" data-act="copy-link">Copy link</button></div>'+
+    '<p class="err" id="ac-err" role="alert"></p>'+
+    '<div class="actions"><button type="submit" class="btn primary">Save</button><a class="btn" href="#/u/'+esc(me.username)+'">View my public page</a>'+(isMod()?'<button type="button" class="btn" data-act="open-mod">Merge requests</button>':'')+'<span class="push"></span><button type="button" class="btn" data-act="signout">Sign out</button></div></form>';
+  openModal();
+}
+$('#sheet').addEventListener('submit',async function(e){
+  if(e.target.id!=='acct-form')return;
+  e.preventDefault();
+  var upd={display_name:$('#ac-name').value.trim(),bio:$('#ac-bio').value.trim(),library_public:$('#ac-lib').checked,wishlist_public:$('#ac-wish').checked};
+  var r=await sb.from('profiles').update(upd).eq('id',cloud.me.id);
+  if(r.error){$('#ac-err').textContent=errText(r.error);return}
+  cloud.me.displayName=upd.display_name;cloud.me.bio=upd.bio;cloud.me.libraryPublic=upd.library_public;cloud.me.wishlistPublic=upd.wishlist_public;
+  $$('[data-fvis]',$('#sheet')).forEach(function(s){var f=S.folders[s.dataset.fvis];if(f&&(f.visibility==='public')!==(s.value==='public'))putFolder(Object.assign({},f,{visibility:s.value}))});
+  closeModal();toast('Profile saved');
+});
+
+/* ----- public profile pages ----- */
+function pItems(tab){
+  if(!P)return [];
+  var W={},E={},items=[];
+  P.works.forEach(function(w){W[w.id]=w});P.editions.forEach(function(e){E[e.id]=e});
+  var f=P.folders.filter(function(x){return x.id===tab})[0];
+  P.copies.forEach(function(c){
+    var e=E[c.editionId],w=e&&W[e.workId];if(!w)return;
+    var inTab=tab==='lib'?c.status==='own':tab==='wish'?c.status==='wish':(c.status==='own'&&(c.folderIds||[]).indexOf(tab)>-1);
+    if(!inTab)return;
+    items.push(Object.assign({},w,e,{id:c.id,workId:w.id,editionId:e.id,status:c.status,read:c.read,added:c.added,color:c.color,colorSource:c.colorSource,spineImg:c.spineImg}));
+  });
+  if(f&&f.sort==='manual'){var m={};(f.order||[]).forEach(function(id,i){m[id]=i});return items.sort(function(a,b){var x=m[a.id],y=m[b.id];return cmpNum(x===undefined?Infinity:x,y===undefined?Infinity:y)||byRelease(a,b)})}
+  return items.sort(SORTERS[(f&&f.sort)||'release']||byRelease);
+}
+function pTabs(){
+  var t=[];
+  if(P.profile.libraryPublic)t.push(['lib','All books']);
+  P.folders.slice().sort(function(a,b){return (a.created||0)-(b.created||0)}).forEach(function(f){t.push([f.id,f.name])});
+  if(P.profile.wishlistPublic)t.push(['wish','Wishlist']);
+  t.push(['reviews','Reviews']);
+  return t;
+}
+function renderProfile(){
+  var el=$('#profile');if(!P)return;
+  var p=P.profile, tabs=pTabs();
+  if(!P.tab||!tabs.some(function(t){return t[0]===P.tab}))P.tab=tabs[0][0];
+  if(!P.view)P.view='shelf';
+  var own=cloud.me&&cloud.me.id===p.id;
+  var nBooks=P.copies.filter(function(c){return c.status==='own'}).length;
+  var top='<div class="pf-top"><a class="pf-brand" href="#/">Longbox</a><span class="push"></span>'+
+    (cloud.me?'<a class="btn small" href="#/">'+(own?'Back to my collection':'My collection')+'</a>':'<a class="btn small primary" href="#/">Sign in or create an account</a>')+'</div>';
+  var head='<header class="pf-head"><div class="pf-av" aria-hidden="true">'+esc((p.displayName||p.username).charAt(0).toUpperCase())+'</div><div><h1>'+esc(p.displayName||('@'+p.username))+'</h1><p class="note">@'+esc(p.username)+' · joined '+esc(new Date(p.joined).toLocaleDateString(undefined,{month:'long',year:'numeric'}))+'</p>'+(p.bio?'<p class="pf-bio">'+esc(p.bio)+'</p>':'')+
+    '<p class="note">'+nBooks+(nBooks===1?' book':' books')+' shared · '+P.reviews.length+(P.reviews.length===1?' review':' reviews')+(own?' · this is how others see your page':'')+'</p></div></header>';
+  var tb='<div class="pf-tabs" role="tablist">'+tabs.map(function(t){return '<button type="button" role="tab" class="btn small" data-ptab="'+esc(t[0])+'" aria-pressed="'+(t[0]===P.tab)+'">'+esc(t[1])+'</button>'}).join('')+'</div>';
+  var body='';
+  if(P.tab==='reviews'){
+    var W={};P.works.forEach(function(w){W[w.id]=w});
+    body=P.reviews.length?'<div class="pf-reviews">'+P.reviews.map(function(v){var w=W[v.workId];return '<div class="rv"><div class="rvwho"><button type="button" class="linkbtn" data-pwork="'+esc(v.workId)+'">'+esc(w?nameOf(w):'A book')+'</button> <span class="stars" role="img" aria-label="'+v.rating+' out of 5">'+stars(v.rating)+'</span></div>'+(v.text?'<p>'+esc(v.text)+'</p>':'')+'<div class="note">'+esc(new Date(v.updated).toLocaleDateString())+'</div></div>'}).join('')+'</div>':'<div class="empty"><h3>No reviews yet</h3></div>';
+  } else {
+    var items=pItems(P.tab);
+    if(!items.length)body='<div class="empty"><h3>Nothing on this shelf yet</h3></div>';
+    else {
+      var viewSw='<div class="seg" role="group" aria-label="View"><button type="button" data-pview="shelf" aria-pressed="'+(P.view==='shelf')+'">Shelf</button><button type="button" data-pview="grid" aria-pressed="'+(P.view==='grid')+'">Covers</button></div>';
+      if(P.view==='grid'){
+        body=viewSw+'<div class="grid">'+items.map(function(c){return '<div class="cardwrap"><button type="button" class="card" data-pwork="'+esc(c.workId)+'">'+coverHTML(c)+'<span class="t">'+esc(nameOf(c))+'</span>'+(c.author?'<span class="s">'+esc(c.author)+'</span>':'')+'</button></div>'}).join('')+'</div>';
+      } else {
+        var wd=(el.clientWidth||900)-70, rows=[[]], used=0;
+        items.forEach(function(c){var sw=(FORMATS[c.format]||FORMATS.trade).w+(c.binding==='hardcover'?6:0)+2;if(used+sw>wd&&rows[rows.length-1].length){rows.push([]);used=0}rows[rows.length-1].push(c);used+=sw});
+        body=viewSw+'<div class="shelf">'+rows.map(function(r){return '<div class="row">'+r.map(function(c){return spineHTML(c).replace('data-open="'+esc(c.id)+'"','data-pwork="'+esc(c.workId)+'"')}).join('')+'</div><div class="plank"></div>'}).join('')+'</div>';
+      }
+    }
+  }
+  el.innerHTML='<div class="pf">'+top+head+tb+'<div class="pf-body">'+body+'</div></div>';
+}
+async function showProfile(name){
+  $('.app').hidden=true;$('#auth').hidden=true;
+  var el=$('#profile');el.hidden=false;
+  el.innerHTML='<div class="pf"><div class="pf-top"><a class="pf-brand" href="#/">Longbox</a></div><p class="note">Loading…</p></div>';
+  var r=await sb.rpc('public_profile',{uname:name});
+  if(location.hash.toLowerCase().indexOf('#/u/'+name)!==0)return;
+  if(r.error||!r.data){el.innerHTML='<div class="pf"><div class="pf-top"><a class="pf-brand" href="#/">Longbox</a></div><div class="empty"><h3>No one goes by @'+esc(name)+'</h3><p>Check the spelling of the link.</p></div></div>';P=null;return}
+  P=r.data;P.tab='';P.view='shelf';
+  adoptCatalog(P.works,P.editions);
+  renderProfile();
+}
+$('#profile').addEventListener('click',function(e){
+  var b=e.target.closest('[data-ptab],[data-pview],[data-pwork]');if(!b)return;
+  if(b.dataset.ptab){P.tab=b.dataset.ptab;renderProfile();return}
+  if(b.dataset.pview){P.view=b.dataset.pview;renderProfile();return}
+  if(b.dataset.pwork){S.rv={editing:false,rating:0};S.confirm='';workModal(b.dataset.pwork)}
+});
+if(window.ResizeObserver){new ResizeObserver(function(){var el=$('#profile');if(!el.hidden&&P&&P.view==='shelf'&&P.tab!=='reviews'){var w=el.clientWidth;if(Math.abs(w-(cloud.pw||0))>=12){cloud.pw=w;renderProfile()}}}).observe($('#profile'))}
+
+
+/* a backup file keeps its old ids; in the shared database they must be unique, so give everything fresh ones */
+function cloudRemapBackup(j){
+  var W={},E={},C={},F={},R={};
+  function mp(M,id,p){if(id===undefined||id===null||id==='')return id;if(!M[id])M[id]=newId(p);return M[id]}
+  var out={works:{},editions:{},reviews:{},comics:{},folders:{},views:{},ignored:[]};
+  Object.keys(j.works||{}).forEach(function(k){var w=Object.assign({},j.works[k]);w.id=mp(W,w.id||k,'w');out.works[w.id]=w});
+  Object.keys(j.editions||{}).forEach(function(k){var e=Object.assign({},j.editions[k]);e.id=mp(E,e.id||k,'e');e.workId=mp(W,e.workId,'w');out.editions[e.id]=e});
+  Object.keys(j.folders||{}).forEach(function(k){var f=Object.assign({},j.folders[k]);f.id=mp(F,f.id||k,'f');f.order=(f.order||[]).map(function(x){return mp(C,x,'c')});delete f.visibility;out.folders[f.id]=f});
+  Object.keys(j.comics||{}).forEach(function(k){var c=Object.assign({},j.comics[k]);c.id=mp(C,c.id||k,'c');
+    if(c.editionId)c.editionId=mp(E,c.editionId,'e');if(c.workId)c.workId=mp(W,c.workId,'w');
+    c.folderIds=(c.folderIds||[]).map(function(x){return mp(F,x,'f')});out.comics[c.id]=c});
+  Object.keys(j.reviews||{}).forEach(function(k){var r=Object.assign({},j.reviews[k]);r.id=mp(R,r.id||k,'r');r.workId=mp(W,r.workId,'w');out.reviews[r.id]=r});
+  Object.keys(j.views||{}).forEach(function(k){var v=Object.assign({},j.views[k]);var nk=k==='all'?'all':mp(F,k,'f');v.id=nk;v.order=(v.order||[]).map(function(x){return mp(C,x,'c')});out.views[nk]=v});
+  return out;
+}
+
+/* clicks that only exist in the online version; returns true when it handled the click */
+function cloudClick(e,el,d){
+  if(d.addEd&&!cloud.me){toast('Sign in to add books to your own shelves.');return true}
+  if(d.merge){
+    var mp=d.merge.split(':');
+    cloudMerge(mp[0],mp[1],mp[2]).then(function(){if(S.modal&&S.modal.mode==='dupes')dupesModal()});
+    return true;
+  }
+  switch(d.act){
+    case 'account':accountModal();return true;
+    case 'signout':cloudSettle().then(function(){closeModal();return sb.auth.signOut()});return true;
+    case 'open-mod':modModal();return true;
+    case 'copy-link':{var inp=$('#ac-link');try{navigator.clipboard.writeText(inp.value).then(function(){toast('Link copied')},function(){inp.select();toast('Press Ctrl+C to copy')})}catch(x){inp.select();toast('Press Ctrl+C to copy')}return true}
+    case 'toggle-folder-vis':{var f=S.folders[S.folder];if(f){var v=f.visibility==='public'?'private':'public';putFolder(Object.assign({},f,{visibility:v}));toast(v==='public'?'This folder is now public on your profile':'This folder is private again')}return true}
+    case 'merge-work':{
+      var sel=$('#merge-to');if(!sel)return true;
+      if(S.confirm==='merge'){var keep=sel.value,drop=S.modal.workId;S.confirm='';cloudMerge('work',keep,drop).then(function(done){if(done)workModal(keep);else workModal(drop)})}
+      else{S.mergeTo=sel.value;S.confirm='merge';workModal(S.modal.workId)}
+      return true}
+    case 'mod-approve':case 'mod-reject':
+      sb.rpc('resolve_merge',{req:d.req,approve:d.act==='mod-approve'}).then(async function(r){
+        if(r.error){toast('Could not do that: '+errText(r.error));return}
+        if(d.act==='mod-approve'){await cloudSettle();await cloudLoad();render()}
+        modModal();toast(d.act==='mod-approve'?'Merged for everyone':'Request closed');
+      });return true;
+    case 'mod-swap':
+      cloudMerge(d.kind,d.keep,d.drop).then(function(){modModal()});return true;
+    case 'mod-del-review':
+      sb.from('reviews').delete().eq('id',d.rid).then(function(r){
+        if(r.error){toast('Could not remove it: '+errText(r.error));return}
+        var s=S.wrev&&S.wrev[d.wid];if(s)s.list=s.list.filter(function(v){return v.id!==d.rid});
+        var box=$('#rv-others');if(box){box.innerHTML=rvOthersHTML(d.wid);var h=$('#rv-head');if(h)h.innerHTML=rvHeadHTML(d.wid)}
+        toast('Review removed');
+      });return true;
+    case 'load-examples':case 'clear-examples':return true;
+  }
+  return false;
+}
+
 async function init(){
+  if(CLOUD_NOLIB){$('.app').hidden=true;showAuth('nolib');return}
+  if(CLOUD){render();await cloudInit();return}
   render();
   var data=null;
   try{idb=await openIDB();data=await idbGet('state');S.mode='idb'}
