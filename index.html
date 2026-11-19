@@ -532,7 +532,7 @@ function norm(c){
 function isBook(c){return !!FORMATS[c.format]}
 
 function authorsOf(c){return String(c.author||'').split(/\s*(?:,|;|&|\band\b)\s*/i).map(function(s){return s.trim()}).filter(Boolean)}
-function authorKey(c){var a=authorsOf(c)[0];if(!a)return ' ';var p=a.split(/\s+/);return p[p.length-1].toLowerCase()+' '+a.toLowerCase()}
+function authorKey(c){var a=authorsOf(c)[0];if(!a)return '￿';var p=a.split(/\s+/);return p[p.length-1].toLowerCase()+' '+a.toLowerCase()}
 
 function byTitle(a,b){return a.title.localeCompare(b.title)||cmpNum(num(a.issue),num(b.issue))}
 function byRelease(a,b){
@@ -1610,7 +1610,7 @@ function renderContent(){
     banner='<div class="banner"><span>These are example books so you can try the shelf. Their details are illustrative.</span><span class="chips">'+(moreEx?'<button type="button" class="btn small" data-act="load-examples">Add more examples</button>':'')+'<button type="button" class="btn small" data-act="clear-examples">Remove examples</button></span></div>';
   }
   if(!books.length){
-    el.innerHTML='<div class="empty"><h3>Your collection is empty</h3><p>Add the books you own, keep a wishlist of the ones you want, and group them into folders like Batman or Image. Drag spines on the shelf to arrange them your way.</p><div class="acts"><button type="button" class="btn primary" data-act="add">Add your first book</button>'+(CLOUD?'':'<button type="button" class="btn" data-act="load-examples">Load '+EX_COMICS.length+' example books</button>')+'</div></div>'+tail;
+    el.innerHTML='<div class="empty"><h3>Your ComicSpace is empty</h3><p>Add the books you own, keep a wishlist of the ones you want, and group them into folders like Batman or Image. Drag spines on the shelf to arrange them your way.</p><div class="acts"><button type="button" class="btn primary" data-act="add">Add your first book</button>'+(CLOUD?'':'<button type="button" class="btn" data-act="load-examples">Load '+EX_COMICS.length+' example books</button>')+'</div></div>'+tail;
     return;
   }
   var head=headHTML(items,sc.length);
